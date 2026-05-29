@@ -680,7 +680,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-05-29 18:45';
+var BUILD_STAMP = '2026-05-29 19:00';
 console.log('🧩 viewer build:', BUILD_STAMP);
 
 var panoElement = document.querySelector('#pano');
@@ -930,6 +930,11 @@ function portalStartHoldMs(ih, preset) {
   var hold = isFinite(value) ? (value <= 60 ? value * 1000 : value) : 0;
   hold = Math.max(preset.holdMin, hold);
   return typeof preset.holdMax === 'number' ? Math.min(hold, preset.holdMax) : hold;
+}
+
+function normalizeInfoHotspotText(raw) {
+  if (!raw) return '';
+  return String(raw).replace(/\s{2,}/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function scaledSceneTextFontSize(fontSize) {
@@ -1673,7 +1678,7 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot) {
   if (obj.data.infoHotspots && obj.data.infoHotspots.length > 0 && (obj.data.infoHotspots[0].text || obj.data.infoHotspots[0].title)) {
     var hs = obj.data.infoHotspots[0];
     var hsStyle = hs.style || {};
-    textEl.textContent = hs.text || hs.title;
+    textEl.textContent = normalizeInfoHotspotText(hs.text || hs.title);
     textEl.style.fontSize = scaledSceneTextFontSize(hsStyle.fontSize || '20px');
     textEl.style.fontFamily = hsStyle.fontFamily || 'sans-serif';
     textEl.style.color = hsStyle.color || '#ffffff';

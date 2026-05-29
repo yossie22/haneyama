@@ -1,4 +1,4 @@
-// GENERATOR_HISTORY: [{"sceneId":"0-aa001","text":"真っ先に花畑に向かったのですが                                                                      霧が深くて引き返し先に登山です。","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.96}]
+// GENERATOR_HISTORY: [{"sceneId":"0-aa001","text":"真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.96}]
 var APP_DATA = {
   "courseBgm": {
     "aa": {
@@ -45,8 +45,8 @@ var APP_DATA = {
           "yaw": 0.96,
           "pitch": 1.49,
           "rotation": 0,
-          "title": "真っ先に花畑に向かったのですが                                                                      霧が深くて引き返し先に登山です。",
-          "text": "真っ先に花畑に向かったのですが                                                                      霧が深くて引き返し先に登山です。",
+          "title": "真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。",
+          "text": "真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。",
           "style": {
             "fontSize": "21px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
