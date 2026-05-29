@@ -1,0 +1,3229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>VR Tour</title>
+<meta name="viewport" content="target-densitydpi=device-dpi, width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, minimal-ui" />
+<link rel="icon" href="vr-icon.ico" type="image/x-icon">
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+#pano { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+/* 十字キー（測定用：白） */
+#crosshair {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 30px; height: 30px; pointer-events: none; z-index: 100; opacity: 0; transition: opacity 0.5s ease;
+}
+#crosshair.visible { opacity: 0.6; }
+#crosshair::before, #crosshair::after { content: ''; position: absolute; background: white; }
+#crosshair::before { top: 14px; left: 0; width: 30px; height: 2px; }
+#crosshair::after { left: 14px; top: 0; width: 2px; height: 30px; }
+
+#compassContainer {
+  position: absolute; top: 20px; right: 20px; display: flex; align-items: center; z-index: 100;
+  transition: opacity 0.5s ease; opacity: 0; pointer-events: none;
+}
+#compassContainer.visible { opacity: 1; pointer-events: auto; }
+
+/* 方位計（数値：全シーン共通） */
+#degreeCircle {
+  width: 60px; height: 60px; background: rgba(255,255,255,0.8); border-radius: 50%; border: 3px solid #0066ff;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  font-family: sans-serif; font-weight: bold; font-size: 14px; color: #0066ff;
+  z-index: 102;
+}
+#degreeCircle small { font-size: 10px; color: #666; }
+
+/* コンパス（針：データがある時のみ） */
+#compassCircle {
+  width: 60px; height: 60px; background: white; border-radius: 50%; border: 3px solid #0066ff;
+  margin-left: 10px; display: none; justify-content: center; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+#compassCircle.active { display: flex; }
+
+#volumeContainer {
+  position: absolute; top: 20px; left: 20px; height: 60px; display: flex; align-items: center;
+  background: rgba(54, 40, 34, 0.85); padding: 0 20px; border-radius: 30px;
+  z-index: 100; transition: opacity 0.5s ease; opacity: 0; border: 1px solid rgba(255,255,255,0.2);
+  pointer-events: none;
+}
+#volumeContainer.visible { opacity: 0.8; pointer-events: auto; }
+#volumeLabel { color: #FF8C00; font-weight: bold; font-family: sans-serif; margin-right: 12px; font-size: 18px; }
+#volumeSlider { cursor: pointer; width: 100px; height: 8px; accent-color: #00FF00; }
+.auto-ctrl{position:absolute;left:20px;height:46px;display:flex;align-items:center;padding:0 14px;border-radius:23px;z-index:100;transition:opacity 0.5s ease;opacity:0;pointer-events:none;}
+.auto-ctrl.visible{opacity:0.9;pointer-events:auto;}
+#speedContainer{top:90px;background:rgba(10,30,55,0.88);border:1px solid rgba(80,160,255,0.4);}
+#zoomContainer{top:144px;background:rgba(10,45,25,0.88);border:1px solid rgba(80,200,100,0.4);}
+#fadeContainer{top:198px;background:rgba(55,20,40,0.88);border:1px solid rgba(255,100,160,0.4);}
+.ctrl-label{font-weight:bold;font-family:sans-serif;font-size:14px;margin-right:8px;white-space:nowrap;}
+#speedContainer .ctrl-label{color:#66ccff;}#zoomContainer .ctrl-label{color:#88ee88;}#fadeContainer .ctrl-label{color:#ffaacc;}
+.ctrl-slider{cursor:pointer;width:80px;height:8px;}
+#speedSlider{accent-color:#66ccff;}#zoomSlider{accent-color:#88ee88;}#fadeSlider{accent-color:#ffaacc;}
+.ctrl-val{font-family:sans-serif;font-size:12px;margin-left:7px;min-width:38px;}
+#speedVal{color:#aaddff;}#zoomVal{color:#aaffaa;}#fadeVal{color:#ffccdd;}
+
+#mapButton { position: absolute; bottom: 30px; left: 20px; width: 70px; height: 70px; cursor: pointer; z-index: 100; opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+#mapButton.visible { opacity: 0.7; pointer-events: auto; }
+#counter { position: absolute; bottom: 30px; left: 110px; width: 60px; height: 60px; background: white; border: 3px solid #ff0000; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; color: #0066ff; z-index: 100; opacity: 0; transition: opacity 0.5s ease; pointer-events: none; user-select: none; }
+#counter.visible { opacity: 0.7; pointer-events: auto; }
+
+.arrow-nav { position: absolute; width: 60px; height: 60px; cursor: pointer; z-index: 100; opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+.arrow-nav.visible { opacity: 0.8; pointer-events: auto; }
+.arrow-nav.arrow-blink.visible { animation: yellowArrowBlink 1.7s ease-in-out infinite; }
+@keyframes yellowArrowBlink {
+  0%, 100% { opacity: 0.18; filter: drop-shadow(0 0 3px rgba(255, 255, 0, 0.35)); }
+  50% { opacity: 0.55; filter: drop-shadow(0 0 6px rgba(255, 255, 0, 0.55)); }
+}
+#arrowUp { bottom: 160px; right: 120px; }
+#arrowDown { bottom: 50px; right: 120px; }
+#arrowLeft { bottom: 105px; right: 185px; }
+#arrowRight { bottom: 105px; right: 55px; }
+/* 緑・青は廃止（DOM は残すが常に非表示） */
+#arrowUpGreen, #arrowDownGreen, #arrowBlueLeft, #arrowBlueRight {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 53-cc001 フェードイン用オーバーレイ（白系） */
+#fadeOverlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(255, 255, 255, 0.8); z-index: 1000; opacity: 0;
+  pointer-events: none; transition: opacity 2s ease-out;
+}
+
+/* ===== infoHotspot テキストオーバーレイ ===== */
+#sceneText {
+  position: fixed;
+  z-index: 200;
+  display: block;
+  box-sizing: border-box;
+  /* スマホ実機：data.js の px × 1.6（2月仕様）。PCプレビューは text_generator で px そのまま */
+  width: 88vw;
+  max-width: min(88vw, 42em);
+  padding: 4px 10px;
+  background: none;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-height: 1.4;
+  /* 多重シャドウで背景に溶け込む */
+  text-shadow:
+    0   0   2px  rgba(0,0,0,1),
+    0   0   5px  rgba(0,0,0,1),
+    0   0   10px rgba(0,0,0,0.85),
+    1px  1px 1px rgba(0,0,0,1),
+    -1px 1px 1px rgba(0,0,0,1),
+    1px -1px 1px rgba(0,0,0,1),
+    -1px -1px 1px rgba(0,0,0,1);
+  opacity: 1;
+  transition: opacity 1s ease;
+}
+
+/* 扉演出用：部分ぼかし（中心→外側へグラデーション） */
+#blurOverlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 1001;
+  opacity: 0;
+  pointer-events: none;
+
+  /* ぼかし強度（JSで更新） */
+  -webkit-backdrop-filter: blur(var(--blurPx, 14px));
+  backdrop-filter: blur(var(--blurPx, 14px));
+
+  /* クリック位置を中心に、内側ほど強く・外側ほど透明（=くっきり） */
+  -webkit-mask-image: radial-gradient(circle at var(--bx, 50%) var(--by, 50%),
+    rgba(0,0,0,1) 0px,
+    rgba(0,0,0,1) var(--innerR, 120px),
+    rgba(0,0,0,0) var(--outerR, 260px)
+  );
+  mask-image: radial-gradient(circle at var(--bx, 50%) var(--by, 50%),
+    rgba(0,0,0,1) 0px,
+    rgba(0,0,0,1) var(--innerR, 120px),
+    rgba(0,0,0,0) var(--outerR, 260px)
+  );
+}
+
+.portal-hotspot {
+  position: relative;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.portal-hotspot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* タップ判定：中央の円（広すぎ→22%に縮小済み → やや拡大 34%/40%） */
+.portal-hit-area {
+  position: absolute;
+  left: 33%;
+  top: 33%;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  z-index: 2;
+  cursor: pointer;
+  pointer-events: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.portal-hotspot.portal-tappable {
+  pointer-events: none;
+}
+.portal-hotspot.portal-tappable .portal-hit-area {
+  pointer-events: auto;
+}
+@media (pointer: coarse) {
+  .portal-hit-area {
+    left: 30%;
+    top: 30%;
+    width: 40%;
+    height: 40%;
+  }
+}
+.portal-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  transition-property: transform;
+  transition-timing-function: ease-in-out;
+  will-change: transform;
+}
+.portal-reveal-cover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url("start.png");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition-property: opacity;
+  transition-timing-function: ease-in-out;
+  pointer-events: none;
+  transform: scale(1.1);
+  transform-origin: 50% 50%;
+}
+
+/* 2D動画ホットスポット（テスト用・パノラマ上に貼る平面動画） */
+.scene-video-2d-wrap {
+  overflow: hidden;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.95;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+  border-radius: 4px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.scene-video-2d-wrap video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+.portal-linked-video {
+  position: absolute;
+  left: 1.5%;
+  top: 1.5%;
+  width: 97%;
+  height: 97%;
+  object-fit: cover;
+  display: block;
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.6s ease-in-out;
+  z-index: 3;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 88% 82% at 50% 50%, #000 42%, transparent 100%);
+  mask-image: radial-gradient(ellipse 88% 82% at 50% 50%, #000 42%, transparent 100%);
+}
+.portal-linked-video.is-playing {
+  opacity: 1;
+}
+
+/* 2D動画・全画面（既定。imageHotspots の videoSrc など） */
+.video-fs-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: rgba(0, 0, 0, 0.92);
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 1.15s ease-in-out;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.video-fs-overlay.is-active {
+  display: flex;
+}
+.video-fs-overlay.is-visible {
+  opacity: 1;
+}
+.video-fs-player {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: cover;
+  background: #000;
+  opacity: 0;
+  transition: opacity 1.05s ease-in-out;
+  -webkit-mask-image: radial-gradient(ellipse 96% 94% at 50% 50%, #000 58%, rgba(0,0,0,0.85) 78%, transparent 100%);
+  mask-image: radial-gradient(ellipse 96% 94% at 50% 50%, #000 58%, rgba(0,0,0,0.85) 78%, transparent 100%);
+}
+.video-fs-image {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.18);
+  transition: opacity 1.05s ease-in-out, transform 5.2s ease-out;
+  -webkit-mask-image: radial-gradient(ellipse 96% 94% at 50% 50%, #000 58%, rgba(0,0,0,0.85) 78%, transparent 100%);
+  mask-image: radial-gradient(ellipse 96% 94% at 50% 50%, #000 58%, rgba(0,0,0,0.85) 78%, transparent 100%);
+}
+.video-fs-start-image {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  opacity: 0;
+  transform: scale(0.82);
+  transition: opacity 0.8s ease-in-out, transform 1.15s ease-in-out;
+}
+.video-fs-overlay.is-visible .video-fs-player,
+.video-fs-overlay.is-visible .video-fs-image {
+  opacity: 1;
+}
+.video-fs-overlay.is-visible .video-fs-image {
+  transform: scale(1);
+}
+.video-fs-overlay.is-waiting-still .video-fs-image {
+  opacity: 0;
+  transform: scale(1.18);
+}
+.video-fs-overlay.is-visible.is-waiting-still .video-fs-start-image {
+  opacity: 1;
+  transform: scale(1);
+}
+.video-fs-overlay.is-waiting-still.is-image-revealed .video-fs-image {
+  opacity: 1;
+  transform: scale(1);
+}
+.video-fs-overlay.is-waiting-still.is-image-revealed .video-fs-start-image {
+  opacity: 0;
+  transform: scale(1.08);
+}
+.video-fs-overlay.is-fading-out {
+  opacity: 0;
+  pointer-events: none;
+}
+.video-fs-overlay.is-fading-out .video-fs-player,
+.video-fs-overlay.is-fading-out .video-fs-image,
+.video-fs-overlay.is-fading-out .video-fs-start-image {
+  opacity: 0;
+  transition: opacity 0.95s ease-in-out;
+}
+
+</style>
+<script src="data.js"></script>
+</head>
+
+<body>
+<div id="pano"></div>
+<div id="sceneText"></div>
+<div id="fadeOverlay"></div>
+<div id="blurOverlay"></div>
+<div id="videoFullscreenOverlay" class="video-fs-overlay" aria-hidden="true">
+  <video id="videoFullscreenPlayer" class="video-fs-player" playsinline webkit-playsinline></video>
+  <img id="imageFullscreenPlayer" class="video-fs-image" alt="">
+  <img id="imageFullscreenStart" class="video-fs-start-image" alt="">
+</div>
+<div id="crosshair"></div>
+
+<div id="compassContainer">
+  <div id="degreeCircle"><span id="yawTxt">0°</span><small id="pitchTxt">0°</small></div>
+  <div id="compassCircle">
+    <svg id="compassNeedle" viewBox="0 0 100 100" width="45" height="45" style="transition: transform 0.1s linear;">
+      <polygon points="50,90 65,50 35,50" fill="#999999" />
+      <polygon points="50,10 65,50 35,50" fill="#E60000" />
+      <text x="50" y="42" font-family="sans-serif" font-size="20" fill="white" font-weight="bold" text-anchor="middle">N</text>
+      <circle cx="50" cy="50" r="5" fill="#333333" />
+    </svg>
+  </div>
+</div>
+
+<div id="volumeContainer">
+  <span id="volumeLabel">VOL</span>
+  <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.5">
+</div>
+<div id="speedContainer" class="auto-ctrl"><span class="ctrl-label">速度</span><input type="range" id="speedSlider" class="ctrl-slider" min="1" max="9" step="1" value="6"><span class="ctrl-val" id="speedVal">少し速</span></div>
+<div id="zoomContainer" class="auto-ctrl"><span class="ctrl-label">ズーム幅</span><input type="range" id="zoomSlider" class="ctrl-slider" min="1" max="9" step="1" value="2"><span class="ctrl-val" id="zoomVal">極小</span></div>
+<div id="fadeContainer" class="auto-ctrl"><span class="ctrl-label">フェード幅</span><input type="range" id="fadeSlider" class="ctrl-slider" min="1" max="9" step="1" value="8"><span class="ctrl-val" id="fadeVal">極大</span></div>
+
+<img id="mapButton" src="Map戻り-removebg-preview.png" onclick="goToMap()">
+<div id="counter">1</div>
+<img id="arrowUp" class="arrow-nav" src="上-removebg-preview.png">
+<img id="arrowDown" class="arrow-nav" src="下-removebg-preview.png">
+<img id="arrowLeft" class="arrow-nav" src="左-removebg-preview.png">
+<img id="arrowRight" class="arrow-nav" src="右-removebg-preview.png">
+<img id="arrowUpGreen" class="arrow-nav" src="緑上-removebg-preview.png" alt="緑矢印（上・前進）">
+<img id="arrowDownGreen" class="arrow-nav" src="緑上-removebg-preview.png" alt="緑矢印（下・後退）">
+<img id="arrowBlueLeft" class="arrow-nav" src="青左-removebg-preview.png">
+<img id="arrowBlueRight" class="arrow-nav" src="青右-removebg-preview.png">
+
+<script src="vendor/marzipano.js"></script>
+<script>
+// ポータル画像は data.js の imageHotspots（sourceScene / sceneStartId で出発地に紐付け）
+
+// ========================================
+// ★ 修正案A：URLパラメータ読み込みをIIFE外に移動
+// スコープ隔離による greenArrowConfig 消失を解決
+// ========================================
+var urlParams = new URLSearchParams(window.location.search);
+var initialYaw = urlParams.get('yaw');
+// ★ 前後左右反転フラグ（?flip=1 で全矢印方向を逆にする）
+var flipDir = urlParams.get('flip') === '1';
+// ★タイルフォルダ名（実フォルダに合わせて 'tiles'）
+window.TILES_BASE = "tiles1024";
+
+// data.js を fetch で読み込む（cache: 'no-store' でキャッシュを完全無効化）
+(function loadDataAndBoot() {
+  function applyDataOverlayAndStart() {
+    // 任意: data_overlay.json があれば APP_DATA にマージ（作品固有のポータル/テキストを data.js と分離できる）
+    fetch('data_overlay.json', { cache: 'no-store' })
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(overlay) {
+        try {
+          if (overlay && overlay.scenes && window.APP_DATA && Array.isArray(window.APP_DATA.scenes)) {
+            var byId = {};
+            window.APP_DATA.scenes.forEach(function(s) { if (s && s.id) byId[s.id] = s; });
+            Object.keys(overlay.scenes).forEach(function(sceneId) {
+              var patch = overlay.scenes[sceneId];
+              if (!patch || !byId[sceneId]) return;
+              Object.keys(patch).forEach(function(k) { byId[sceneId][k] = patch[k]; });
+            });
+            console.log('✅ data_overlay.json をマージしました: ' + Object.keys(overlay.scenes).length + ' scene(s)');
+          }
+        } catch (e) {
+          console.warn('⚠ data_overlay.json マージ失敗:', e);
+        }
+        startViewer();
+      })
+      .catch(function() {
+        // 無ければそのまま起動
+        startViewer();
+      });
+  }
+
+  fetch('data.js', { cache: 'no-store' })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    })
+    .then(function(text) {
+      // data.js を実行して window.APP_DATA を定義
+      // eslint-disable-next-line no-new-func
+      (new Function(text))();
+      if (!window.APP_DATA) throw new Error('APP_DATA が未定義');
+      console.log('✅ data.js をキャッシュなしで読み込みました (fetch)');
+      applyDataOverlayAndStart();
+    })
+    .catch(function(err) {
+      // フォールバック：file://環境など fetch が使えない場合は script タグで読み込む
+      console.warn('⚠ fetch失敗、script タグで再試行:', err);
+      var s = document.createElement('script');
+      s.src = 'data.js?v=' + Date.now();
+      s.onload = function() {
+        console.log('✅ data.js を script タグで読み込みました');
+        applyDataOverlayAndStart();
+      };
+      document.head.appendChild(s);
+    });
+})();
+
+// 緑矢印設定をグローバルスコープで先に定義
+window.greenArrowConfig = {
+  arrows: []
+};
+window.blueArrowConfig = {
+  arrows: []
+};
+
+// ★ infoHotspot テキスト管理
+window.sceneTextTimer  = null; // フェードアウト開始タイマー
+window.sceneTextHideTimer = null; // 非表示完了タイマー
+var sceneTextScale = 1.6;  // スマホ実機用（PCの text_generator プレビューに近い見え方）
+
+// ★3種類の法則を実装するためのグローバル変数
+window.returnScene = null;                    // 戻り先シーン
+window.returnEntryScene = null;               // 戻り先が有効な入口シーン
+window.departureYaw = null;                   // 出発時の aa での yaw
+window.bbInitialYaw = null;                   // 進入先の初期 yaw（bb/cc の正面）
+window.allowYellowSideReturn = true;          // 黄色矢印で脇道入口へ戻る（青横移動で入った先は false）
+
+// ★ BGM再生管理
+var bgmAudios = {};              // { fileName: HTMLAudioElement }
+var bgmVolume = parseFloat(localStorage.getItem('bgmVolume') || '0.5'); // 0..1
+// ★地図側のON/OFF（デフォルト：true。過去の保存値で意図せず無音にならないようURL指定だけを見る）
+var bgmEnabled = true;
+// ★URL ?bgm=0 / ?bgm=1（地図の「BGMオフで入る」など。この閲覧のみ上書き）
+(function () {
+  var p = urlParams.get('bgm');
+  if (p === '0') bgmEnabled = false;
+  if (p === '1') bgmEnabled = true;
+})();
+// ★長押しで「地図OFFでも鳴らす」強制再生フラグ
+var bgmForce = false;
+var bgmFadeOutDuration = 1600;   // コース切替などのフェードアウト（ms）
+var courseBgmSessionPlayed = {}; // 地図に戻るまでコースBGMを1回だけ（同一コース内の移動では再開しない）
+var activeBgmCourse = null;      // いま鳴っているBGMのコース（bb→aa などコース変更で停止）
+var bgmSuppressedForVideo = 0;   // 動画再生中はBGMをフェードアウト
+
+/** 緑矢印の遷移先ID補正（17dd001 → 17-dd001）。グローバル定義（URL読込より前） */
+function resolveSceneId(rawId) {
+  if (!rawId) return null;
+  var s = String(rawId).trim();
+  if (typeof scenesData !== 'undefined' && scenesData && scenesData[s]) return s;
+  if (window.APP_DATA && window.APP_DATA.scenes) {
+    var compact = s.replace(/-/g, '');
+    for (var i = 0; i < window.APP_DATA.scenes.length; i++) {
+      var sid = window.APP_DATA.scenes[i].id;
+      if (sid === s) return sid;
+      if (sid.replace(/-/g, '') === compact) return sid;
+    }
+    var m = s.match(/^(\d+)([a-z]{2})(\d{3})$/i);
+    if (m) {
+      var fixed = m[1] + '-' + m[2].toLowerCase() + m[3];
+      for (var j = 0; j < window.APP_DATA.scenes.length; j++) {
+        if (window.APP_DATA.scenes[j].id === fixed) return fixed;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeGreenArrowConfig() {
+  if (!window.greenArrowConfig || !window.greenArrowConfig.arrows.length) return;
+  window.greenArrowConfig.arrows = window.greenArrowConfig.arrows.map(function(a) {
+    var tid = resolveSceneId(a.targetSceneId) || a.targetSceneId;
+    if (tid !== a.targetSceneId) {
+      console.warn('⚠️ 緑矢印の遷移先IDを補正:', a.targetSceneId, '→', tid);
+    }
+    var out = {
+      sceneId: a.sceneId,
+      startAngle: a.startAngle,
+      endAngle: a.endAngle,
+      targetSceneId: tid
+    };
+    if (a.direction === 'down') out.direction = 'down';
+    else out.direction = 'up';
+    return out;
+  });
+}
+
+// URLパラメータから緑矢印データを読み込み（IIFE外で実行）
+var greenArrowsParam = urlParams.get('greenArrows');
+
+if (greenArrowsParam) {
+  try {
+    var decoded = decodeURIComponent(greenArrowsParam);
+    var arrowsArray = JSON.parse(decoded);
+    if (Array.isArray(arrowsArray)) {
+      window.greenArrowConfig.arrows = arrowsArray;
+      console.log('✅ greenArrows loaded:', window.greenArrowConfig.arrows.length, '件');
+    } else {
+      console.warn('⚠️ arrowsArray is not an array');
+    }
+  } catch(e) {
+    console.error('❌ Failed to parse greenArrows:', e.message, e);
+    window.greenArrowConfig.arrows = [];
+  }
+}
+
+// 脇道（黄矢印点滅）— map.html の SIDE_BRANCHES から URL で渡す（作品ごとに空でも可）
+window.sideBranchConfig = { branches: [] };
+
+var sideBranchesParam = urlParams.get('sideBranches');
+if (sideBranchesParam !== null && sideBranchesParam !== '') {
+  try {
+    var sideBranchesDecoded = JSON.parse(decodeURIComponent(sideBranchesParam));
+    if (Array.isArray(sideBranchesDecoded)) {
+      window.sideBranchConfig.branches = sideBranchesDecoded.map(normalizeSideBranchEntry);
+      console.log('✅ sideBranches loaded:', window.sideBranchConfig.branches.length, '件');
+    }
+  } catch (e) {
+    console.error('❌ Failed to parse sideBranches:', e.message);
+  }
+}
+
+/** 旧 rules 形式 → 新形式（type/target/crossroads） */
+function normalizeSideBranchEntry(entry) {
+  if (!entry) return entry;
+  if (entry.type === 'branch' || entry.type === 'return') return entry;
+  if (!entry.rules || !entry.rules.length) return entry;
+  var sceneId = entry.sceneId;
+  for (var i = 0; i < entry.rules.length; i++) {
+    if (entry.rules[i].whenReturn) {
+      return { sceneId: sceneId, type: 'return' };
+    }
+  }
+  var targets = [];
+  entry.rules.forEach(function(rule) {
+    (rule.exits || []).forEach(function(ex) {
+      if (ex.action === 'return' || !ex.targetSceneId) return;
+      var tid = resolveSceneId(ex.targetSceneId) || ex.targetSceneId;
+      if (targets.indexOf(tid) < 0) targets.push(tid);
+    });
+  });
+  if (!targets.length) return { sceneId: sceneId, type: 'branch' };
+  return {
+    sceneId: sceneId,
+    type: 'branch',
+    target: targets[0],
+    targetAlt: targets.length > 1 ? targets[1] : null,
+    crossroads: targets.length > 1
+  };
+}
+
+function startViewer() {
+'use strict';
+var Marzipano = window.Marzipano;
+var data = window.APP_DATA;
+
+function sceneIdParts(id) {
+  var match = String(id || '').match(/-([a-zA-Z]+)(\d+)$/);
+  return match ? { course: match[1].toLowerCase(), number: parseInt(match[2], 10) } : null;
+}
+
+function inferScenePosition(sd) {
+  var pos = Number(sd.position);
+  if (Number.isFinite(pos)) return pos;
+  var parts = sceneIdParts(sd.id);
+  return parts && Number.isFinite(parts.number) ? parts.number : 1;
+}
+
+function normalizeSceneDirection(sd) {
+  var dir = String(sd.direction || '').toLowerCase();
+  if (dir === 'main') return 'iki';
+  if (dir === 'iki' || dir === 'left' || dir === 'right' || dir === 'portal') return dir;
+
+  var parts = sceneIdParts(sd.id);
+  if (!parts) return 'iki';
+  if (parts.course === 'bb') return 'left';
+  if (parts.course === 'cc') return 'right';
+  if (parts.course === 'dd') return 'portal';
+  return 'iki';
+}
+
+function sceneCourseKey(sd) {
+  if (sd && sd.course) return String(sd.course).toLowerCase();
+  var parts = sceneIdParts(sd && sd.id);
+  return parts ? parts.course : normalizeSceneDirection(sd || {});
+}
+
+function formatCounterLabel(sceneData) {
+  var pos = inferScenePosition(sceneData);
+  var course = sceneCourseKey(sceneData);
+  if (course === 'bb') return 'B' + pos;
+  if (course === 'cc') return 'C' + pos;
+  if (course === 'dd') return 'D' + pos;
+  return String(pos);
+}
+
+// Marzipano 標準出力の data.js には position/direction が無いことがあるため、
+// 黄色矢印とカウンターが使う最低限の情報をシーンIDから補完する。
+data.scenes.forEach(function(sd) {
+  sd.position = inferScenePosition(sd);
+  sd.direction = normalizeSceneDirection(sd);
+  sd.course = sceneCourseKey(sd);
+});
+
+// ★ タイルレベルを自動補正（Marzipano出力の data.js をそのまま使えるようにする）
+// 1024tiles では size > 1024 のレベルは存在しないため除去し、
+// tileSize も size に合わせて補正する（例: tileSize:512,size:1024 → tileSize:1024,size:1024）
+// ※ faceSize はソース画像の実際の面サイズなので変更しない
+data.scenes.forEach(function(scene) {
+  scene.levels = scene.levels.filter(function(l) { return l.size <= 1024; });
+  scene.levels.forEach(function(l) {
+    if (!l.fallbackOnly) l.tileSize = l.size;
+  });
+});
+
+// ビルド識別（どのファイルが実行されているか確認用）
+var BUILD_STAMP = '2026-05-29 18:45';
+console.log('🧩 viewer build:', BUILD_STAMP);
+
+var panoElement = document.querySelector('#pano');
+var viewer = new Marzipano.Viewer(panoElement);
+
+// ★画面タッチで自動再生停止（黄色矢印と同じ方式）
+panoElement.addEventListener('mousedown', function() {
+  if (typeof autoMoveActive !== 'undefined' && autoMoveActive) {
+    stopAutoMove();
+    console.log('⛔ タッチで自動再生停止');
+  }
+});
+
+panoElement.addEventListener('touchstart', function(e) {
+  if (e.target && e.target.closest && e.target.closest('.portal-hotspot, .portal-hit-area')) {
+    return;
+  }
+  if (typeof autoMoveActive !== 'undefined' && autoMoveActive) {
+    stopAutoMove();
+    console.log('⛔ タッチで自動再生停止');
+  }
+}, { passive: true });
+
+
+// UI要素の取得（ここで一括定義するように修正）
+var counterEl = document.getElementById('counter');
+var mapBtnEl = document.getElementById('mapButton');
+var crosshairEl = document.getElementById('crosshair');
+var compassContEl = document.getElementById('compassContainer');
+var compassNeedleCircle = document.getElementById('compassCircle');
+var volumeUI = document.getElementById('volumeContainer');
+
+var audioEnabled = false;
+// ★長押しの再生/停止トグル（地図OFFとは別軸）
+var bgmPlaying = true;
+var audioUnlockConsumed = false;
+
+function enableAudioOnFirstGesture() {
+  if (audioUnlockConsumed) return;
+  audioUnlockConsumed = true;
+  audioEnabled = true;
+  // 地図の BGMオフ（?bgm=0）を尊重。長押しの bgmForce とは別
+  if (currentSceneObj && shouldPlayBGM()) playSceneBGM(currentSceneObj.data.id);
+}
+document.addEventListener('click', enableAudioOnFirstGesture, { once: true });
+document.addEventListener('touchstart', enableAudioOnFirstGesture, { once: true, passive: true });
+document.addEventListener('pointerdown', enableAudioOnFirstGesture, { once: true, capture: true });
+if (panoElement) {
+  panoElement.addEventListener('touchstart', enableAudioOnFirstGesture, { once: true, capture: true, passive: true });
+  panoElement.addEventListener('pointerdown', enableAudioOnFirstGesture, { once: true, capture: true });
+}
+
+function toggleBGMPlayback() {
+  // 長押しは「地図でOFFでも強制的に鳴らす」ことがある
+  if (bgmPlaying) {
+    bgmPlaying = false;
+    bgmForce = false;
+    stopAllBGM();
+  } else {
+    bgmPlaying = true;
+    if (!bgmEnabled) bgmForce = true;
+    if (currentSceneObj && shouldPlayBGM()) playSceneBGM(currentSceneObj.data.id);
+  }
+}
+
+var scenesData = {};
+var currentScene = null, currentView = null, currentSceneObj = null;
+var uiTimeout, showExtras = false, showVolume = false, pressTimer;
+var speedUI=document.getElementById('speedContainer');
+var zoomUI=document.getElementById('zoomContainer');
+var fadeUI=document.getElementById('fadeContainer');
+var showAutoCtrl=false;
+var uiArrowsShown=false;
+
+data.scenes.forEach(function(sd) {
+  var tilesBase = window.TILES_BASE || 'tiles';
+  var source = Marzipano.ImageUrlSource.fromString(tilesBase + "/" + sd.id + "/{z}/{f}/{y}/{x}.jpg");
+  var geometry = new Marzipano.CubeGeometry(sd.levels);
+  var limiter = Marzipano.RectilinearView.limit.traditional(sd.faceSize, 75*Math.PI/180, 120*Math.PI/180);
+  var view = new Marzipano.RectilinearView(sd.initialViewParameters, limiter);
+  var scene = viewer.createScene({ source: source, geometry: geometry, view: view });
+  var dir = sd.direction;
+  scenesData[sd.id] = { scene: scene, view: view, data: Object.assign({}, sd, { direction: dir }) };
+});
+normalizeGreenArrowConfig();
+
+function syncYellowArrowVisibility() {
+  var pairs = [
+    ['arrowUp', document.getElementById('arrowUp')],
+    ['arrowDown', document.getElementById('arrowDown')],
+    ['arrowLeft', document.getElementById('arrowLeft')],
+    ['arrowRight', document.getElementById('arrowRight')]
+  ];
+  pairs.forEach(function(pair) {
+    var el = pair[1];
+    if (!el) return;
+    var show = el.style.visibility !== 'hidden';
+    if (uiArrowsShown && show) el.classList.add('visible');
+    else el.classList.remove('visible');
+  });
+}
+
+function showUI() {
+  var standardUI = [mapBtnEl, counterEl];
+  var yellowArrowIds = ['arrowUp', 'arrowDown', 'arrowLeft', 'arrowRight'];
+
+  uiArrowsShown = true;
+  standardUI.forEach(function(el) { if(el) el.classList.add('visible'); });
+  syncYellowArrowVisibility();
+
+  if (showExtras) {
+    if(crosshairEl) crosshairEl.classList.add('visible');
+    if(compassContEl) compassContEl.classList.add('visible');
+    
+    var hasCompassData = (currentSceneObj && (currentSceneObj.data.heading !== undefined || currentSceneObj.data.compassHeading !== undefined));
+    if(hasCompassData) {
+      compassNeedleCircle.classList.add('active');
+    } else {
+      compassNeedleCircle.classList.remove('active');
+    }
+  } else {
+    if(crosshairEl) crosshairEl.classList.remove('visible');
+    if(compassContEl) compassContEl.classList.remove('visible');
+  }
+
+  if (showVolume) volumeUI.classList.add('visible'); else volumeUI.classList.remove('visible');
+  if(showAutoCtrl){[speedUI,zoomUI,fadeUI].forEach(function(el){if(el)el.classList.add('visible');});}
+  else{[speedUI,zoomUI,fadeUI].forEach(function(el){if(el)el.classList.remove('visible');});}
+
+  clearTimeout(uiTimeout);
+  uiTimeout = setTimeout(function() {
+    uiArrowsShown = false;
+    standardUI.concat([compassContEl, crosshairEl, volumeUI]).forEach(function(el) { if(el) el.classList.remove('visible'); });
+    yellowArrowIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.remove('visible');
+    });
+  }, 3000);
+}
+
+// イベントリスナーの修正
+if (counterEl) {
+  counterEl.addEventListener('dblclick', function() {
+    showExtras = !showExtras;
+    showUI();
+  });
+  var tc=0,tt=null;
+  counterEl.addEventListener('click',function(){
+    tc++;if(tt)clearTimeout(tt);
+    tt=setTimeout(function(){tc=0;},600);
+    if(tc>=3){tc=0;clearTimeout(tt);showAutoCtrl=!showAutoCtrl;showUI();}
+  });
+  counterEl.addEventListener('mousedown', function() {
+    pressTimer = setTimeout(function() {
+      audioEnabled = true;
+      toggleBGMPlayback();
+      showVolume = !showVolume;
+      showUI();
+    }, 600);
+  });
+  counterEl.addEventListener('mouseup', function() { clearTimeout(pressTimer); });
+  counterEl.addEventListener('touchstart', function() {
+    pressTimer = setTimeout(function() {
+      audioEnabled = true;
+      toggleBGMPlayback();
+      showVolume = !showVolume;
+      showUI();
+    }, 600);
+  });
+  counterEl.addEventListener('touchend', function() { clearTimeout(pressTimer); });
+}
+
+document.addEventListener('mousemove', showUI);
+document.addEventListener('touchstart', showUI);
+
+function angleDiffDeg(a, b) {
+  var diff = a - b;
+  while (diff > 180) diff -= 360;
+  while (diff < -180) diff += 360;
+  return diff;
+}
+
+function legacyPortalCenterRange(ih) {
+  var ymin = typeof ih.yawMin === 'number' && !isNaN(ih.yawMin) ? ih.yawMin : 0;
+  var ymax = typeof ih.yawMax === 'number' && !isNaN(ih.yawMax) ? ih.yawMax : ymin;
+  var center = normalizeAngle(degToRad((ymin + angleDiffDeg(ymax, ymin) / 2))) * 180 / Math.PI;
+  var range = Math.abs(angleDiffDeg(ymax, ymin)) / 2;
+  return { center: center, range: range };
+}
+
+function portalCenterDeg(ih) {
+  if (typeof ih.yawCenter === 'number' && !isNaN(ih.yawCenter)) return ih.yawCenter;
+  return legacyPortalCenterRange(ih).center;
+}
+
+function portalRangeDeg(ih) {
+  if (typeof ih.yawRange === 'number' && !isNaN(ih.yawRange)) return Math.max(0, ih.yawRange);
+  return legacyPortalCenterRange(ih).range;
+}
+
+function portalPlacementYawRad(ih) {
+  return degToRad(portalCenterDeg(ih));
+}
+
+function isRevealPortal(ih) {
+  var preset = portalEffectPreset(ih);
+  return preset.reveal;
+}
+
+function isGrowPortal(ih) {
+  var preset = portalEffectPreset(ih);
+  return preset.grow;
+}
+
+function portalEffectPreset(ih) {
+  var effect = ih && ih.effect ? ih.effect : 'normal';
+  var presets = {
+    normal:     { reveal: false, grow: false, coverOpacity: 0.5, startScale: 0.88, endScale: 1.25, holdMin: 2500, coverFade: 1200, appearMax: 1800, appearMin: 900 },
+    reveal:     { reveal: true,  grow: false, coverOpacity: 0.34,startScale: 0.88, endScale: 1.25, holdMin: 120, holdMax: 260, coverFade: 520, appearMax: 1300, appearMin: 450 },
+    revealSoft: { reveal: true,  grow: false, coverOpacity: 0.22,startScale: 0.88, endScale: 1.25, holdMin: 80,  holdMax: 180, coverFade: 420, appearMax: 1000, appearMin: 350 },
+    revealLong: { reveal: true,  grow: false, coverOpacity: 0.30,startScale: 0.88, endScale: 1.25, holdMin: 220, holdMax: 420, coverFade: 700, appearMax: 1500, appearMin: 500 },
+    revealSlow: { reveal: true,  grow: false, coverOpacity: 0.26,startScale: 0.88, endScale: 1.25, holdMin: 300, holdMax: 600, coverFade: 850, appearMax: 1700, appearMin: 600 },
+    grow:       { reveal: false, grow: true,  coverOpacity: 0.5, startScale: 0.88, endScale: 1.25, holdMin: 2500, coverFade: 1200, appearMax: 1800, appearMin: 900 },
+    growHalf:   { reveal: false, grow: true,  coverOpacity: 0.5, startScale: 0.94, endScale: 1.12, holdMin: 2500, coverFade: 1200, appearMax: 1800, appearMin: 900 },
+    growTiny:   { reveal: false, grow: true,  coverOpacity: 0.5, startScale: 0.97, endScale: 1.06, holdMin: 2500, coverFade: 1200, appearMax: 1800, appearMin: 900 },
+    revealGrow: { reveal: true,  grow: true,  coverOpacity: 0.34,startScale: 0.88, endScale: 1.25, holdMin: 120, holdMax: 260, coverFade: 520, appearMax: 1300, appearMin: 450 },
+    revealGrowSoft: { reveal: true, grow: true, coverOpacity: 0.22,startScale: 0.94, endScale: 1.12, holdMin: 80, holdMax: 180, coverFade: 420, appearMax: 1000, appearMin: 350 },
+    revealGrowTiny: { reveal: true, grow: true, coverOpacity: 0.22,startScale: 0.97, endScale: 1.06, holdMin: 80, holdMax: 180, coverFade: 420, appearMax: 1000, appearMin: 350 },
+    revealGrowSlow: { reveal: true, grow: true, coverOpacity: 0.26,startScale: 0.94, endScale: 1.12, holdMin: 300, holdMax: 600, coverFade: 850, appearMax: 1700, appearMin: 600 },
+    portalDive: { reveal: true, grow: true, coverOpacity: 0.30, startScale: 0.92, endScale: 1.08, holdMin: 200, holdMax: 400, coverFade: 600, appearMax: 1200, appearMin: 400 }
+  };
+  return presets[effect] || presets.normal;
+}
+
+function portalFadeMs(ih) {
+  return Math.max(0, (parseFloat(ih.fadeTime) || 0) * 1000);
+}
+
+function portalDispMs(ih) {
+  var value = parseFloat(ih.dispTime);
+  if (!isFinite(value)) return 0;
+  return Math.max(0, value <= 60 ? value * 1000 : value);
+}
+
+function portalStartHoldMs(ih, preset) {
+  var value = parseFloat(ih.startHoldTime);
+  var hold = isFinite(value) ? (value <= 60 ? value * 1000 : value) : 0;
+  hold = Math.max(preset.holdMin, hold);
+  return typeof preset.holdMax === 'number' ? Math.min(hold, preset.holdMax) : hold;
+}
+
+function scaledSceneTextFontSize(fontSize) {
+  var px = parseFloat(fontSize);
+  if (!isFinite(px)) return fontSize || '20px';
+  return Math.round(px * sceneTextScale) + 'px';
+}
+
+function preparePortalMotion(inner, cover, ih, fadeMs) {
+  var preset = portalEffectPreset(ih);
+  inner.style.transitionDuration = Math.max(0, fadeMs) + 'ms';
+  if (preset.grow) {
+    inner.style.transform = 'scale(' + preset.startScale + ')';
+  }
+  if (cover) {
+    cover.style.transition = 'none';
+    cover.style.opacity = String(preset.coverOpacity);
+    cover.getBoundingClientRect();
+    cover.style.transitionProperty = 'opacity';
+    cover.style.transitionTimingFunction = 'ease-in-out';
+    cover.style.transitionDuration = Math.max(0, preset.coverFade) + 'ms';
+  }
+}
+
+function showPortalMotion(inner, cover, ih, zoomMs) {
+  var preset = portalEffectPreset(ih);
+  if (inner && preset.grow) {
+    inner.style.transitionDuration = Math.max(0, zoomMs) + 'ms';
+    inner.style.transform = 'scale(' + preset.endScale + ')';
+  }
+  if (cover) {
+    var holdMs = portalStartHoldMs(ih, preset);
+    setTimeout(function() {
+      cover.style.transitionDuration = Math.max(0, preset.coverFade) + 'ms';
+      cover.style.opacity = '0';
+    }, holdMs);
+  }
+}
+
+function hidePortalMotion(inner, cover, ih) {
+  var preset = portalEffectPreset(ih);
+  if (inner && preset.grow) inner.style.transform = 'scale(' + preset.startScale + ')';
+  if (cover) cover.style.opacity = String(preset.coverOpacity);
+}
+
+function setPortalTappable(hs, enabled) {
+  if (!hs || !hs.img) return;
+  hs.portalActive = !!enabled;
+  if (enabled) hs.img.classList.add('portal-tappable');
+  else hs.img.classList.remove('portal-tappable');
+  hs.img.style.pointerEvents = 'none';
+  if (hs.hitArea) hs.hitArea.style.pointerEvents = enabled ? 'auto' : 'none';
+}
+
+var portalDiveAnimToken = 0;
+
+function easeOutCubic01(t) {
+  t = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function isPortalDiveTransition(ih) {
+  if (!ih) return false;
+  if (ih.transition === 'dive' || ih.portalTransition === 'dive') return true;
+  return ih.effect === 'portalDive';
+}
+
+function portalDiveFovRad(ih, which) {
+  var radKey = which === 'start' ? 'diveStartFov' : 'diveEndFov';
+  var degKey = which === 'start' ? 'diveStartFovDeg' : 'diveEndFovDeg';
+  if (ih && ih[radKey] != null && isFinite(ih[radKey])) return ih[radKey];
+  if (ih && ih[degKey] != null && isFinite(ih[degKey])) return degToRad(ih[degKey]);
+  if (which === 'start') return degToRad(28);
+  return null;
+}
+
+function resolvePortalDiveEndFov(ih, targetSceneId) {
+  var end = portalDiveFovRad(ih, 'end');
+  if (end != null) return end;
+  var obj = scenesData[targetSceneId];
+  if (obj && obj.data.initialViewParameters && obj.data.initialViewParameters.fov != null) {
+    return obj.data.initialViewParameters.fov;
+  }
+  return currentView ? currentView.parameters().fov : degToRad(66);
+}
+
+function animateViewFov(view, fromFov, toFov, durationMs, token) {
+  if (!view) return;
+  if (!durationMs || durationMs <= 0) {
+    view.setParameters({ fov: toFov });
+    return;
+  }
+  var start = performance.now();
+  var yaw = view.parameters().yaw;
+  var pitch = view.parameters().pitch;
+  function tick(now) {
+    if (token !== portalDiveAnimToken) return;
+    var t = easeOutCubic01(Math.min(1, (now - start) / durationMs));
+    view.setParameters({
+      yaw: yaw,
+      pitch: pitch,
+      fov: fromFov + (toFov - fromFov) * t
+    });
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function setPortalDiveBlur(active, durationMs) {
+  var blurEl = document.getElementById('blurOverlay');
+  if (!blurEl) return;
+  blurEl.style.setProperty('--bx', '50%');
+  blurEl.style.setProperty('--by', '50%');
+  blurEl.style.setProperty('--innerR', '80px');
+  blurEl.style.setProperty('--outerR', '320px');
+  blurEl.style.setProperty('--blurPx', active ? '20px' : '8px');
+  blurEl.style.transition = 'opacity ' + Math.max(300, Math.round(durationMs * 0.65)) + 'ms ease-out';
+  blurEl.style.opacity = active ? '0.75' : '0';
+}
+
+function playPortalDiveTransition(hs) {
+  var ih = hs.ih;
+  if (!ih || !ih.targetScene) return;
+
+  portalDiveAnimToken += 1;
+  var token = portalDiveAnimToken;
+  var dur = Math.max(400, ih.diveDurationMs || 2800);
+  var startFov = portalDiveFovRad(ih, 'start');
+  var endFov = resolvePortalDiveEndFov(ih, ih.targetScene);
+  var useBlur = ih.diveBlur !== false;
+  var targetScene = ih.targetScene;
+  var sameScene = currentSceneObj && currentSceneObj.data.id === targetScene;
+
+  if (hs.autoFadeTimer) {
+    clearTimeout(hs.autoFadeTimer);
+    hs.autoFadeTimer = null;
+  }
+  hidePortalMotion(hs.inner, hs.cover, ih);
+  if (hs.portalImg) {
+    hs.portalImg.style.transition = 'opacity 0.45s ease-out';
+    hs.portalImg.style.opacity = '0';
+  }
+  hs.img.style.transition = 'opacity 0.5s ease-out';
+  hs.img.style.opacity = '0';
+  window[hs.flagKey] = true;
+
+  if (useBlur) setPortalDiveBlur(true, dur);
+
+  setTimeout(function() {
+    if (token !== portalDiveAnimToken) return;
+
+    if (sameScene) {
+      if (ih.targetYaw !== undefined && ih.targetPitch !== undefined && currentView) {
+        currentView.setParameters({
+          yaw: ih.targetYaw,
+          pitch: ih.targetPitch,
+          fov: startFov
+        });
+      } else if (currentView) {
+        currentView.setParameters({ fov: startFov });
+      }
+      animateViewFov(currentView, startFov, endFov, dur, token);
+    } else {
+      switchScene(targetScene, ih.targetYaw, ih.targetPitch, startFov, true);
+      setTimeout(function() {
+        if (token !== portalDiveAnimToken || !currentView) return;
+        animateViewFov(currentView, startFov, endFov, dur, token);
+      }, 100);
+    }
+
+    setTimeout(function() {
+      if (token !== portalDiveAnimToken) return;
+      if (useBlur) setPortalDiveBlur(false, dur);
+    }, Math.round(dur * 0.35));
+  }, 320);
+}
+
+function bindPortalTap(el, onTap) {
+  var lastTouchEnd = 0;
+  var touchMoved = false;
+  el.addEventListener('touchstart', function(e) {
+    touchMoved = false;
+    e.stopPropagation();
+  }, { passive: true });
+  el.addEventListener('touchmove', function() {
+    touchMoved = true;
+  }, { passive: true });
+  el.addEventListener('touchend', function(e) {
+    if (touchMoved) return;
+    lastTouchEnd = Date.now();
+    e.preventDefault();
+    e.stopPropagation();
+    onTap(e);
+  }, { passive: false });
+  el.addEventListener('click', function(e) {
+    if (Date.now() - lastTouchEnd < 600) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onTap(e);
+  });
+}
+
+function onPortalHotspotTap(hs) {
+  if (!hs || !hs.portalActive || !hs.ih) return;
+  var ih = hs.ih;
+  if (ih.videoSrc && ih.playVideoOnTap !== false && !isPortalDiveTransition(ih) && isSupportedFullscreenMediaSrc(ih.videoSrc)) {
+    setPortalTappable(hs, false);
+    playLinkedPortalVideo(hs);
+    return;
+  }
+  if (ih.videoSrc && ih.playVideoOnTap !== false && !isSupportedFullscreenMediaSrc(ih.videoSrc)) {
+    console.warn('⚠️ videoSrc は対応形式ではないため、再生をスキップします:', ih.videoSrc);
+  }
+  if (!ih.targetScene) return;
+  setPortalTappable(hs, false);
+  if (isPortalDiveTransition(ih)) {
+    console.log('🌸 ポータル・ダイブ → ' + ih.targetScene);
+    playPortalDiveTransition(hs);
+    return;
+  }
+  console.log('🎎 hotspot タップ → ' + ih.targetScene + ' に移動');
+  switchScene(ih.targetScene, ih.targetYaw, ih.targetPitch, currentView.parameters().fov, true);
+}
+
+function isSupportedVideoSrc(src) {
+  var clean = String(src || '').split('?')[0].split('#')[0].toLowerCase();
+  return /\.(mp4|m4v|webm|mov|ogv|ogg)$/.test(clean);
+}
+
+function isSupportedImageSrc(src) {
+  var clean = String(src || '').split('?')[0].split('#')[0].toLowerCase();
+  return /\.(jpg|jpeg|png|gif|webp)$/.test(clean);
+}
+
+function isSupportedFullscreenMediaSrc(src) {
+  return isSupportedVideoSrc(src) || isSupportedImageSrc(src);
+}
+
+var fullscreenVideoOnEnd = null;
+var fullscreenFadeOutTimer = null;
+var VIDEO_FS_FADE_IN_MS = 1150;
+var VIDEO_FS_FADE_OUT_MS = 1000;
+
+function showFullscreenVideo(src, opts) {
+  opts = opts || {};
+  fadeOutBgmForVideo();
+  var overlay = document.getElementById('videoFullscreenOverlay');
+  var vid = document.getElementById('videoFullscreenPlayer');
+  var img = document.getElementById('imageFullscreenPlayer');
+  var startImg = document.getElementById('imageFullscreenStart');
+  if (!overlay || !vid) return;
+  if (!isSupportedVideoSrc(src)) {
+    console.warn('⚠️ 全画面動画ではない形式のため再生しません:', src);
+    if (opts.onEnd) opts.onEnd();
+    return;
+  }
+  if (fullscreenFadeOutTimer) {
+    clearTimeout(fullscreenFadeOutTimer);
+    fullscreenFadeOutTimer = null;
+  }
+  fullscreenVideoOnEnd = opts.onEnd || null;
+  if (img) {
+    img.removeAttribute('src');
+    img.style.display = 'none';
+    img.style.opacity = '0';
+    img.style.transform = 'scale(1.18)';
+  }
+  if (startImg) {
+    startImg.removeAttribute('src');
+    startImg.style.display = 'none';
+    startImg.style.opacity = '0';
+  }
+  vid.style.display = 'block';
+  vid.style.opacity = '';
+  vid.loop = !!opts.loop;
+  vid.src = src;
+  vid.muted = false;
+  vid.onerror = function() {
+    console.warn('⚠️ 動画を再生できませんでした:', src);
+    hideFullscreenVideo(true, true);
+  };
+  // manualEnd: 終了処理（角度合わせ等）を先に実行してから閉じたい場合に使う
+  if (opts.manualEnd) {
+    vid.onended = function() {
+      if (vid.loop) return;
+      if (fullscreenVideoOnEnd) fullscreenVideoOnEnd();
+    };
+  } else {
+    vid.onended = function() {
+      if (vid.loop) return;
+      hideFullscreenVideo(true, false);
+    };
+  }
+  overlay.classList.remove('is-fading-out', 'is-visible', 'is-waiting-still', 'is-image-revealed');
+  overlay.classList.add('is-active');
+  overlay.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      overlay.classList.add('is-visible');
+    });
+  });
+  setTimeout(function() {
+    vid.play().catch(function() {
+      vid.muted = true;
+      vid.play().catch(function() {
+        console.warn('⚠️ 動画再生に失敗したためスキップします:', src);
+        hideFullscreenVideo(true, true);
+      });
+    });
+  }, Math.round(VIDEO_FS_FADE_IN_MS * 0.45));
+}
+
+function hideFullscreenVideo(callOnEnd, instant) {
+  var overlay = document.getElementById('videoFullscreenOverlay');
+  var vid = document.getElementById('videoFullscreenPlayer');
+  var img = document.getElementById('imageFullscreenPlayer');
+  var startImg = document.getElementById('imageFullscreenStart');
+  if (!overlay || !vid) return;
+
+  function finishHide() {
+    overlay.classList.remove('is-active', 'is-visible', 'is-fading-out', 'is-waiting-still', 'is-image-revealed');
+    overlay.setAttribute('aria-hidden', 'true');
+    try {
+      vid.pause();
+      vid.currentTime = 0;
+    } catch (e) {}
+    if (img) {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+      img.style.opacity = '0';
+      img.style.transform = 'scale(1.18)';
+    }
+    if (startImg) {
+      startImg.removeAttribute('src');
+      startImg.style.display = 'none';
+      startImg.style.opacity = '0';
+    }
+    restoreBgmAfterVideo();
+    if (callOnEnd && fullscreenVideoOnEnd) {
+      var cb = fullscreenVideoOnEnd;
+      fullscreenVideoOnEnd = null;
+      cb();
+    }
+  }
+
+  if (!overlay.classList.contains('is-active')) {
+    finishHide();
+    return;
+  }
+  if (overlay.classList.contains('is-fading-out')) return;
+
+  if (instant) {
+    if (fullscreenFadeOutTimer) {
+      clearTimeout(fullscreenFadeOutTimer);
+      fullscreenFadeOutTimer = null;
+    }
+    finishHide();
+    return;
+  }
+
+  overlay.classList.remove('is-visible');
+  overlay.classList.add('is-fading-out');
+  fullscreenFadeOutTimer = setTimeout(function() {
+    fullscreenFadeOutTimer = null;
+    finishHide();
+  }, VIDEO_FS_FADE_OUT_MS);
+}
+
+function showFullscreenImage(src, opts) {
+  opts = opts || {};
+  fadeOutBgmForVideo();
+  var overlay = document.getElementById('videoFullscreenOverlay');
+  var vid = document.getElementById('videoFullscreenPlayer');
+  var img = document.getElementById('imageFullscreenPlayer');
+  var startImg = document.getElementById('imageFullscreenStart');
+  if (!overlay || !img) return;
+  if (!isSupportedImageSrc(src)) {
+    console.warn('⚠️ 全画面静止画ではない形式のため表示しません:', src);
+    if (opts.onEnd) opts.onEnd();
+    return;
+  }
+  if (fullscreenFadeOutTimer) {
+    clearTimeout(fullscreenFadeOutTimer);
+    fullscreenFadeOutTimer = null;
+  }
+  fullscreenVideoOnEnd = opts.onEnd || null;
+  if (vid) {
+    try { vid.pause(); } catch (e) {}
+    vid.removeAttribute('src');
+    vid.style.display = 'none';
+    vid.style.opacity = '0';
+  }
+  var hasStartImage = !!(opts.startSrc && isSupportedImageSrc(opts.startSrc) && opts.startSrc !== src && startImg);
+  var zoomStartScale = Math.max(1.05, Number(opts.zoomStartScale) || 2.7);
+  var zoomOrigin = opts.zoomOrigin || '32% 45%';
+  img.style.display = 'block';
+  img.removeAttribute('src');
+  img.style.transformOrigin = zoomOrigin;
+  img.style.transform = 'scale(' + zoomStartScale + ')';
+  if (startImg) {
+    startImg.removeAttribute('src');
+    startImg.style.display = hasStartImage ? 'block' : 'none';
+    startImg.style.opacity = '';
+    startImg.style.transform = '';
+    if (hasStartImage) startImg.src = opts.startSrc;
+  }
+  img.onload = function() {
+    overlay.classList.remove('is-fading-out', 'is-visible', 'is-waiting-still', 'is-image-revealed');
+    if (hasStartImage) overlay.classList.add('is-waiting-still');
+    overlay.classList.add('is-active');
+    overlay.setAttribute('aria-hidden', 'false');
+    img.style.transitionDuration = '1.05s, ' + Math.max(3600, opts.durationMs || 6800) + 'ms';
+    img.style.opacity = '';
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        overlay.classList.add('is-visible');
+        img.style.transform = 'scale(1)';
+      });
+    });
+    var startHold = hasStartImage ? Math.max(450, opts.startHoldMs || 950) : 0;
+    if (hasStartImage) {
+      setTimeout(function() {
+        overlay.classList.add('is-image-revealed');
+      }, startHold);
+    }
+    var endHold = Math.max(0, Number(opts.endHoldMs) || 500);
+    var hold = Math.max(2200, opts.durationMs || 6800) + startHold + endHold;
+    fullscreenFadeOutTimer = setTimeout(function() {
+      fullscreenFadeOutTimer = null;
+      if (opts.manualEnd) {
+        if (fullscreenVideoOnEnd) fullscreenVideoOnEnd();
+      } else {
+        hideFullscreenVideo(true, false);
+      }
+    }, hold);
+  };
+  img.onerror = function() {
+    console.warn('⚠️ 静止画を表示できませんでした:', src);
+    hideFullscreenVideo(true, true);
+  };
+  img.src = src;
+}
+
+function playLinkedPortalVideo(hs) {
+  var ih = hs.ih;
+  if (!hs.inner || hs.videoPlaying) return;
+  hs.videoPlaying = true;
+  if (hs.autoFadeTimer) {
+    clearTimeout(hs.autoFadeTimer);
+    hs.autoFadeTimer = null;
+  }
+  console.log('🎬 ポータル全画面メディア再生: ' + ih.videoSrc);
+  fadeOutBgmForVideo();
+
+  if (hs.portalImg) {
+    hs.portalImg.style.transition = 'opacity 0.85s ease-in-out';
+    hs.portalImg.style.opacity = '0';
+  }
+  if (hs.cover) {
+    hs.cover.style.transition = 'opacity 0.75s ease-in-out';
+    hs.cover.style.opacity = '0';
+  }
+
+  function finishPortalVideo() {
+    if (!hs.videoPlaying) return;
+    hs.videoPlaying = false;
+    window[hs.flagKey] = true;
+    if (hs.linkedVideo) {
+      hs.linkedVideo.classList.remove('is-playing');
+      try {
+        hs.linkedVideo.pause();
+        hs.linkedVideo.currentTime = 0;
+      } catch (e) {}
+    }
+    hidePortalMotion(hs.inner, hs.cover, ih);
+    if (hs.portalImg) hs.portalImg.style.opacity = '0';
+    hs.img.style.transition = 'opacity 1.1s ease-in-out';
+    hs.img.style.opacity = '0';
+    setPortalTappable(hs, false);
+
+    if (ih.targetSceneAfterVideo) {
+      setTimeout(function() {
+        switchScene(
+          ih.targetSceneAfterVideo,
+          ih.targetYawAfterVideo,
+          ih.targetPitchAfterVideo,
+          currentView.parameters().fov,
+          true
+        );
+      }, 500);
+      // 画面遷移の後にフェードで閉じる（yawの一瞬見えを防止）
+      setTimeout(function() { hideFullscreenVideo(false, false); }, 750);
+      return;
+    }
+
+    // 既定動作: targetSceneAfterVideo が無い場合は targetScene/targetYaw/targetPitch を使う。
+    // （動画を見終わったら指定した向きへ“戻す/移動する”）
+    if (ih.targetScene) {
+      var sameScene = currentSceneObj && currentSceneObj.data && currentSceneObj.data.id === ih.targetScene;
+      // 先に pano の向きを合わせてから overlay を閉じる（77°が見えるのを防ぐ）
+      if (sameScene) {
+        if (currentView && ih.targetYaw !== undefined && ih.targetPitch !== undefined) {
+          currentView.setParameters({
+            yaw: ih.targetYaw,
+            pitch: ih.targetPitch,
+            fov: currentView.parameters().fov
+          });
+          requestAnimationFrame(function() {
+            if (!currentView) return;
+            currentView.setParameters({
+              yaw: ih.targetYaw,
+              pitch: ih.targetPitch,
+              fov: currentView.parameters().fov
+            });
+            // 次フレームで閉じる（確実に向きが反映された後にフェード開始）
+            requestAnimationFrame(function() { hideFullscreenVideo(false, false); });
+          });
+        }
+        return;
+      }
+      // 別シーンへ移動する場合も、overlay を残したまま switch してから閉じる
+      switchScene(
+        ih.targetScene,
+        ih.targetYaw,
+        ih.targetPitch,
+        currentView.parameters().fov,
+        true
+      );
+      setTimeout(function() { hideFullscreenVideo(false, false); }, 720);
+      return;
+    }
+
+    // 遷移先指定が無い場合はそのまま閉じる
+    hideFullscreenVideo(false, false);
+  }
+
+  var useFullscreen = ih.videoFullscreen !== false;
+  if (useFullscreen) {
+    setTimeout(function() {
+      if (isSupportedImageSrc(ih.videoSrc)) {
+        showFullscreenImage(ih.videoSrc, {
+          zoomStartScale: ih.stillZoomStartScale || ih.videoStillZoomStartScale || 2.7,
+          zoomOrigin: ih.stillZoomOrigin || ih.videoStillZoomOrigin || '32% 45%',
+          durationMs: ih.stillDurationMs || ih.videoImageDurationMs || ih.videoStillDurationMs || 6800,
+          endHoldMs: ih.stillEndHoldMs || ih.videoStillEndHoldMs || 500,
+          manualEnd: true,
+          onEnd: finishPortalVideo
+        });
+      } else {
+        showFullscreenVideo(ih.videoSrc, {
+          loop: ih.videoLoop === true,
+          manualEnd: true,
+          onEnd: function() {
+            // 動画終了 → 先に pano の向き/遷移を確定 → その後に overlay を閉じる
+            finishPortalVideo();
+          }
+        });
+      }
+    }, 520);
+    return;
+  }
+
+  var vid = hs.linkedVideo;
+  if (!vid) {
+    vid = document.createElement('video');
+    vid.className = 'portal-linked-video';
+    vid.src = ih.videoSrc;
+    vid.playsInline = true;
+    vid.muted = false;
+    vid.loop = ih.videoLoop === true;
+    vid.preload = 'auto';
+    hs.inner.appendChild(vid);
+    hs.linkedVideo = vid;
+  }
+  setTimeout(function() {
+    if (!hs.linkedVideo) return;
+    hs.linkedVideo.classList.add('is-playing');
+    hs.linkedVideo.play().catch(function() {
+      hs.linkedVideo.muted = true;
+      hs.linkedVideo.play();
+    });
+  }, 400);
+  vid.onended = function() {
+    if (ih.videoLoop === true) return;
+    finishPortalVideo();
+  };
+}
+
+function pauseAllSceneVideos() {
+  hideFullscreenVideo(false, true);
+  if (!window.sceneVideoEls) return;
+  window.sceneVideoEls.forEach(function(item) {
+    try {
+      item.vid.pause();
+      item.vid.currentTime = 0;
+    } catch (e) {}
+  });
+  window.sceneVideoEls = [];
+}
+
+function bindVideo2DTap(wrap, vid, vh) {
+  bindPortalTap(wrap, function() {
+    if (vh && vh.fullscreen !== false) {
+      showFullscreenVideo(vid.src, { loop: vh.loop !== false });
+      return;
+    }
+    if (vid.paused) {
+      vid.muted = false;
+      vid.play().catch(function() {
+        vid.muted = true;
+        vid.play();
+      });
+    } else {
+      vid.pause();
+    }
+  });
+}
+
+function attachVideoHotspots(sceneId, sceneData) {
+  var list = sceneData.videoHotspots;
+  if (!list || !list.length || !currentScene) return;
+  window.sceneVideoEls = window.sceneVideoEls || [];
+  list.forEach(function(vh) {
+    if (!vh.src) return;
+    var fade = vh.fade !== undefined ? vh.fade : 16;
+    var wrap = document.createElement('div');
+    wrap.className = 'scene-video-2d-wrap';
+    var maskCss = '-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black ' + fade + '%,black ' + (100 - fade) + '%,transparent 100%),linear-gradient(to right,transparent 0%,black ' + fade + '%,black ' + (100 - fade) + '%,transparent 100%);-webkit-mask-composite:destination-in;mask-image:linear-gradient(to bottom,transparent 0%,black ' + fade + '%,black ' + (100 - fade) + '%,transparent 100%),linear-gradient(to right,transparent 0%,black ' + fade + '%,black ' + (100 - fade) + '%,transparent 100%);mask-composite:intersect;';
+    wrap.style.cssText = [
+      'width:' + (vh.width || 560) + 'px',
+      'height:' + (vh.height || 315) + 'px',
+      maskCss
+    ].join('');
+    var vid = document.createElement('video');
+    vid.className = 'scene-video-2d';
+    vid.src = vh.src;
+    vid.loop = vh.loop !== false;
+    vid.playsInline = true;
+    vid.muted = true;
+    vid.preload = 'metadata';
+    if (vh.poster) vid.poster = vh.poster;
+    if (vh.autoplay) {
+      vid.autoplay = true;
+      vid.muted = true;
+    }
+    wrap.appendChild(vid);
+    bindVideo2DTap(wrap, vid, vh);
+    var placeYaw = vh.yaw !== undefined ? degToRad(parseFloat(vh.yaw)) : 0;
+    var placePitch = vh.pitch !== undefined ? degToRad(parseFloat(vh.pitch)) : 0;
+    currentScene.hotspotContainer().createHotspot(wrap,
+      { yaw: placeYaw, pitch: placePitch },
+      { perspective: { radius: vh.radius || 900 } }
+    );
+    window.sceneVideoEls.push({ vid: vid, wrap: wrap, sceneId: sceneId });
+    console.log('🎬 2D動画配置: ' + vh.src + ' @ scene ' + sceneId);
+  });
+}
+
+// 出発地シーンIDに属する imageHotspots を全シーンから収集（誤って別シーン配下にあっても表示）
+function collectImageHotspotsForScene(sceneId) {
+  var list = [];
+  data.scenes.forEach(function(sd) {
+    if (!sd.imageHotspots) return;
+    sd.imageHotspots.forEach(function(ih) {
+      var logical = ih.sourceScene || ih.sceneStartId || sd.id;
+      if (logical === sceneId) list.push(ih);
+    });
+  });
+  return list;
+}
+
+function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot) {
+  var obj = scenesData[sceneId];
+  if (!obj) return;
+  
+  console.log('🔵 switchScene: sceneId=' + sceneId + ', yaw=' + (yaw !== undefined ? radToDeg(yaw).toFixed(2) + '°' : 'undefined') + ', pitch=' + (pitch !== undefined ? radToDeg(pitch).toFixed(2) + '°' : 'undefined'));
+  
+  pauseAllSceneVideos();
+  // ★hotspot フラグをリセット（新しいシーンで再度表示可能にする）
+  if (window.hotspotImages) {
+    window.hotspotImages = [];
+  }
+  // ★全ての hotspotShown フラグをリセット
+  for (var key in window) {
+    if (key.startsWith('hotspotShown_')) {
+      window[key] = false;
+    }
+  }
+  
+  currentSceneObj = obj; currentScene = obj.scene; currentView = obj.view;
+  
+  // ★修正：yaw/pitch が指定されていない場合、initialViewParameters から取得
+  var targetYaw = yaw;
+  var targetPitch = pitch;
+  
+  if (initialYaw !== null) {
+    targetYaw = degToRad(parseFloat(initialYaw));
+    initialYaw = null;
+  } else if (targetYaw === undefined) {
+    // yaw が指定されていない場合は、initialViewParameters から使用
+    targetYaw = obj.data.initialViewParameters?.yaw;
+  }
+  
+  if (targetPitch === undefined) {
+    // pitch が指定されていない場合は、initialViewParameters から使用
+    targetPitch = obj.data.initialViewParameters?.pitch;
+  }
+  
+  var targetFov = fov !== undefined ? fov : currentView.parameters().fov;
+
+  var fadePct = (typeof autoMoveActive !== 'undefined' && autoMoveActive)
+    ? readAutoFadePctFromSlider()
+    : null;
+  var crossfadeDur = fadePct != null
+    ? Math.min(2000, Math.max(0, Math.round(autoMoveInterval_ms * fadePct)))
+    : 700;
+  if (fromPortalHotspot) {
+    crossfadeDur = Math.max(crossfadeDur, 1800);
+  }
+  currentScene.switchTo({ transitionDuration: crossfadeDur });
+
+  // switchTo 後に向きを確実に反映（黄・青・緑共通。フェード中も再適用）
+  if (targetYaw !== undefined && targetPitch !== undefined) {
+    var params = { yaw: targetYaw, pitch: targetPitch, fov: targetFov };
+    console.log('   → 実際に設定: yaw=' + radToDeg(normalizeAngle(targetYaw)).toFixed(2) + '°, pitch=' + radToDeg(targetPitch).toFixed(2) + '°');
+    function applyViewParams() {
+      if (currentView) currentView.setParameters(params);
+    }
+    applyViewParams();
+    requestAnimationFrame(applyViewParams);
+    setTimeout(applyViewParams, Math.max(50, crossfadeDur + 50));
+  }
+  
+  // ===== infoHotspot テキスト表示（1シーン1回限り・7秒後フェードアウト） =====
+  var textEl = document.getElementById('sceneText');
+  // 【診断ログ】data.jsのinfoHotspotsを毎回確認
+  var _ihs = obj.data.infoHotspots;
+  console.log('📝 [infoHotspot診断] sceneId=' + sceneId
+    + ' | 件数=' + (_ihs ? _ihs.length : 0)
+    + ' | text=' + (_ihs && _ihs[0] ? (_ihs[0].text || _ihs[0].title) : 'なし'));
+  if (obj.data.infoHotspots && obj.data.infoHotspots.length > 0 && (obj.data.infoHotspots[0].text || obj.data.infoHotspots[0].title)) {
+    var hs = obj.data.infoHotspots[0];
+    var hsStyle = hs.style || {};
+    textEl.textContent = hs.text || hs.title;
+    textEl.style.fontSize = scaledSceneTextFontSize(hsStyle.fontSize || '20px');
+    textEl.style.fontFamily = hsStyle.fontFamily || 'sans-serif';
+    textEl.style.color = hsStyle.color || '#ffffff';
+    // pitch → 画面の縦位置（bottom %）
+    var hsPitch = typeof hs.pitch === 'number' ? hs.pitch : 0.9;
+    var bottomPct = Math.round(((1.5 - hsPitch) / 3.0) * 100);
+    bottomPct = Math.max(2, Math.min(92, bottomPct));
+    textEl.style.bottom = bottomPct + '%';
+    // yaw → 画面の横位置（left %）
+    var hsYaw = typeof hs.yaw === 'number' ? hs.yaw : 0;
+    var leftPct = Math.round(((hsYaw + Math.PI) / (2 * Math.PI)) * 100);
+    leftPct = Math.max(10, Math.min(90, leftPct));
+    textEl.style.left = leftPct + '%';
+    textEl.style.transition = 'none';
+    textEl.style.opacity = '0';
+    textEl.style.display = 'block';
+    textEl.getBoundingClientRect(); // 強制リフロー：opacity:0 を確定させる
+    textEl.style.transition = 'opacity 1s ease';
+    textEl.style.opacity = '1';
+    // 既存タイマーをリセット
+    if (window.sceneTextTimer) { clearTimeout(window.sceneTextTimer); }
+    if (window.sceneTextHideTimer) { clearTimeout(window.sceneTextHideTimer); }
+    // 5秒後にフェードアウト開始（以前より2秒短縮）
+    window.sceneTextTimer = setTimeout(function() {
+      textEl.style.transition = 'opacity 6.75s ease';
+      textEl.style.opacity = '0';
+      window.sceneTextHideTimer = setTimeout(function() {
+        textEl.style.display = 'none';
+        window.sceneTextHideTimer = null;
+      }, 6750);
+      window.sceneTextTimer = null;
+    }, 5000);
+  } else {
+    if (window.sceneTextTimer) { clearTimeout(window.sceneTextTimer); }
+    if (window.sceneTextHideTimer) { clearTimeout(window.sceneTextHideTimer); }
+    textEl.style.display = 'none';
+  }
+  
+  if (counterEl) counterEl.textContent = formatCounterLabel(obj.data);
+  // ★ BGM処理：シーン切り替え時に再生（地図ON/OFF＋長押し状態に従う）
+  playSceneBGM(sceneId);
+  
+  showUI();
+  
+  // ★imageHotspots（出発地＝sceneId に紐づくものを全シーンから収集）
+  var portalList = collectImageHotspotsForScene(sceneId);
+  console.log('🔍 [switchScene] sceneId=' + sceneId + ' ポータル件数=' + portalList.length);
+  if (portalList.length > 0) {
+    portalList.forEach(function(ih) {
+      var wrapper = document.createElement('div');
+      var inner = document.createElement('div');
+      var img = document.createElement('img');
+      var hitArea = document.createElement('div');
+      var cover = null;
+      var fadeMs = portalFadeMs(ih);
+      var preset = portalEffectPreset(ih);
+      img.src = ih.src;
+      img.alt = '';
+      img.style.opacity = preset.reveal ? '0' : '1';
+      img.style.transition = 'opacity ' + fadeMs + 'ms ease-in-out';
+      wrapper.className = 'image-hotspot portal-hotspot';
+      wrapper.style.cssText = [
+        'width:' + (ih.width || 400) + 'px',
+        'height:' + (ih.height || 300) + 'px',
+        'opacity:0',
+        'transition:opacity ' + fadeMs + 'ms ease-in-out',
+        'cursor:pointer',
+        'pointer-events:none'
+      ].join(';');
+      inner.className = 'portal-inner';
+      inner.appendChild(img);
+      if (isRevealPortal(ih)) {
+        cover = document.createElement('div');
+        cover.className = 'portal-reveal-cover';
+        inner.appendChild(cover);
+      }
+      hitArea.className = 'portal-hit-area';
+      preparePortalMotion(inner, cover, ih, fadeMs);
+      wrapper.appendChild(inner);
+      wrapper.appendChild(hitArea);
+      
+      var hsRef = {
+        img: wrapper,
+        portalImg: img,
+        inner: inner,
+        cover: cover,
+        hitArea: hitArea,
+        ih: ih,
+        sceneId: sceneId,
+        flagKey: 'hotspotShown_' + sceneId + '_' + ih.targetScene,
+        portalActive: false,
+        videoPlaying: false,
+        linkedVideo: null,
+        autoFadeTimer: null
+      };
+      bindPortalTap(hitArea, function() { onPortalHotspotTap(hsRef); });
+      
+      var placeYaw = portalPlacementYawRad(ih);
+      var placePitch = 0;
+
+      // ★hotspot を VR 空間に配置（中心角度へ。球面 yaw/pitch の個別設定は使わない）
+      currentScene.hotspotContainer().createHotspot(wrapper,
+        { yaw: placeYaw, pitch: placePitch },
+        { perspective: { radius: ih.radius || 800 } }
+      );
+      
+      // ★updateUI で opacity 制御用のグローバル参照を保持
+      if (!window.hotspotImages) window.hotspotImages = [];
+      window.hotspotImages.push(hsRef);
+    });
+  }
+
+  attachVideoHotspots(sceneId, obj.data);
+}
+
+function updateUI() {
+  if (!currentView) return;
+  var yawDeg = radToDeg(normalizeAngle(currentView.parameters().yaw));
+  var pitch = radToDeg(currentView.parameters().pitch);
+
+  document.getElementById('yawTxt').textContent = Math.round(yawDeg) + '°';
+  document.getElementById('pitchTxt').textContent = Math.round(pitch) + '°';
+  document.getElementById('compassNeedle').style.transform = 'rotate(' + (-yawDeg) + 'deg)';
+
+  // ★ホットスポットエディタ連携：現在の向きをlocalStorageに書き込む
+  try {
+    localStorage.setItem('hs_sceneId', currentSceneObj ? currentSceneObj.data.id : '');
+    localStorage.setItem('hs_yaw',   currentView.parameters().yaw);
+    localStorage.setItem('hs_pitch', currentView.parameters().pitch);
+  } catch(e) {}
+
+  var yawAbs = Math.abs(yawDeg);
+  var isVert = yawAbs <= 45 || yawAbs > 135;
+  var junctionCfg = currentSceneObj ? getSideBranchSceneConfig(currentSceneObj.data.id) : null;
+  var junctionVis = getJunctionYellowLayout(junctionCfg);
+  var showUp = junctionVis ? junctionVis.up : isVert;
+  var showDown = junctionVis ? junctionVis.down : isVert;
+  var showLeft = junctionVis ? junctionVis.left : !isVert;
+  var showRight = junctionVis ? junctionVis.right : !isVert;
+  document.getElementById('arrowUp').style.visibility = showUp ? 'visible' : 'hidden';
+  document.getElementById('arrowDown').style.visibility = showDown ? 'visible' : 'hidden';
+  document.getElementById('arrowLeft').style.visibility = showLeft ? 'visible' : 'hidden';
+  document.getElementById('arrowRight').style.visibility = showRight ? 'visible' : 'hidden';
+  syncYellowArrowVisibility();
+
+  if (window.hotspotImages && window.hotspotImages.length > 0) {
+    window.hotspotImages.forEach(function(hs) {
+      if (currentSceneObj && currentSceneObj.data.id === hs.sceneId && !window[hs.flagKey]) {
+        var center = portalCenterDeg(hs.ih);
+        var range = portalRangeDeg(hs.ih);
+        var inRange = Math.abs(angleDiffDeg(yawDeg, center)) <= range;
+        
+        if (inRange) {
+          var fadeMs = portalFadeMs(hs.ih);
+          var dispMs = portalDispMs(hs.ih);
+          var totalTime = fadeMs + dispMs;
+          var preset = portalEffectPreset(hs.ih);
+          var appearMs = fadeMs;
+          var imageDelayMs = preset.reveal ? Math.min(120, Math.round(portalStartHoldMs(hs.ih, preset) * 0.5), Math.max(0, totalTime - appearMs)) : 0;
+          window[hs.flagKey] = true;
+          showPortalMotion(hs.inner, hs.cover, hs.ih, totalTime);
+          hs.img.style.transition = 'opacity ' + appearMs + 'ms ease-in-out';
+          hs.img.style.opacity = '1';
+          setPortalTappable(hs, true);
+          if (hs.portalImg) {
+            hs.portalImg.style.opacity = preset.reveal ? '0' : '1';
+            hs.portalImg.style.transition = 'opacity ' + appearMs + 'ms ease-in-out';
+            setTimeout(function() {
+              if (hs.portalImg) hs.portalImg.style.opacity = '1';
+            }, imageDelayMs);
+          }
+          console.log('🎎 hotspot フェードイン開始: ' + hs.ih.src + ' (fadeTime=' + hs.ih.fadeTime + 's, dispTime=' + dispMs + 'ms → totalTime=' + totalTime + 'ms ≈ ' + (totalTime/1000).toFixed(1) + '秒)');
+          
+          if (hs.ih.videoSrc && hs.ih.playVideoOnTap !== false) {
+            console.log('🎬 動画ポータル: タップで ' + hs.ih.videoSrc + ' を再生');
+          }
+          // 一定時間後はポータル画像を消し、景色を隠し続けないようにする
+          hs.autoFadeTimer = setTimeout(function() {
+            if (hs.videoPlaying) return;
+            hidePortalMotion(hs.inner, hs.cover, hs.ih);
+            if (hs.portalImg) hs.portalImg.style.opacity = preset.reveal ? '0' : '1';
+            hs.img.style.opacity = '0';
+            setPortalTappable(hs, false);
+            console.log('🎎 hotspot フェードアウト開始: ' + hs.ih.src);
+            if (hs.ih.resetDisplay) {
+              window[hs.flagKey] = false;
+              console.log('🔄 hotspot リセット表示有効: 次に表示範囲に入ったら再表示します');
+            }
+          }, totalTime);
+        }
+      }
+    });
+  }
+
+  updateSideBranchBlink();
+}
+
+setInterval(updateUI, 100);
+console.log('✅ setInterval(updateUI, 100) started');
+
+document.getElementById('volumeSlider').addEventListener('input', function(e) {
+  bgmVolume = Math.max(0, Math.min(1, parseFloat(e.target.value)));
+  _save('vol',bgmVolume);
+  Object.keys(bgmAudios).forEach(function(key) {
+    if (bgmAudios[key]) bgmAudios[key].volume = bgmVolume;
+  });
+});
+setTimeout(function(){var v=parseFloat(_load('vol','0.5'));bgmVolume=v;document.getElementById('volumeSlider').value=v;},100);
+
+var speedLabels=['','激遅','遅い','やや遅','少し遅','普通','少し速','やや速','速い','激速'];
+function speedToMs(v){return Math.round(2500-(v-1)*(2500-1000)/8);}
+document.getElementById('speedSlider').addEventListener('input',function(e){
+  var v=parseInt(e.target.value);autoMoveInterval_ms=speedToMs(v);
+  document.getElementById('speedVal').textContent=speedLabels[v]||v;_save('speed',v);if(autoMoveActive)startContinuousZoom();
+});
+var zoomLabels=['','ゼロ','極小','やや小','少小','中','少大','やや大','大','極大'];
+function zoomToMin(v){return v===1?breathMax:+(breathMax-(v-1)*1.0).toFixed(1);}
+document.getElementById('zoomSlider').addEventListener('input',function(e){
+  var v=parseInt(e.target.value);breathMin=zoomToMin(v);
+  document.getElementById('zoomVal').textContent=zoomLabels[v]||v;_save('zoom',v);if(autoMoveActive)startContinuousZoom();
+});
+var fadeLabels=['','なし','極小','小','やや小','中','やや大','大','極大','最大'];
+function fadeToPct(v){return(v-1)/8;}
+document.getElementById('fadeSlider').addEventListener('input',function(e){
+  var v=parseInt(e.target.value);autoFadePct=fadeToPct(v);
+  document.getElementById('fadeVal').textContent=fadeLabels[v]||v;_save('fade',v);
+});
+
+/* ========================================
+   ★統合版：黄色矢印処理
+   2月版のシンプルロジック + 現在版の脇道処理
+======================================== */
+
+function executeMoveByDelta(delta) {
+  if (!currentView || !currentSceneObj) return;
+
+  var currentPos = Number(currentSceneObj.data.position);
+  var nextPos = currentPos + delta;
+  var currentCourse = sceneCourseKey(currentSceneObj.data);
+
+  for (var id in scenesData) {
+    var sd = scenesData[id].data;
+    if (Number(sd.position) === nextPos &&
+        sceneCourseKey(sd) === currentCourse) {
+      switchScene(id, getRelativeSceneYaw(id), getRelativeScenePitch(id), currentView.parameters().fov);
+      return;
+    }
+  }
+
+  for (var fallbackId in scenesData) {
+    var fallbackSd = scenesData[fallbackId].data;
+    if (Number(fallbackSd.position) === nextPos &&
+        fallbackSd.direction === currentSceneObj.data.direction) {
+      switchScene(fallbackId, getRelativeSceneYaw(fallbackId), getRelativeScenePitch(fallbackId), currentView.parameters().fov);
+      return;
+    }
+  }
+  console.warn('⚠️ 次のシーンが見つかりません: course=' + currentCourse + ', position=' + nextPos);
+}
+
+function getSceneInitialYaw(sceneId, fallbackYaw) {
+  var obj = scenesData[sceneId];
+  var yaw = obj && obj.data && obj.data.initialViewParameters ? obj.data.initialViewParameters.yaw : undefined;
+  return yaw !== undefined && yaw !== null ? yaw : fallbackYaw;
+}
+
+function getSceneInitialPitch(sceneId, fallbackPitch) {
+  var obj = scenesData[sceneId];
+  var pitch = obj && obj.data && obj.data.initialViewParameters ? obj.data.initialViewParameters.pitch : undefined;
+  return pitch !== undefined && pitch !== null ? pitch : fallbackPitch;
+}
+
+function getRelativeSceneYaw(targetSceneId) {
+  var currentYaw = currentView.parameters().yaw;
+  var currentInitialYaw = currentSceneObj && currentSceneObj.data && currentSceneObj.data.initialViewParameters
+    ? currentSceneObj.data.initialViewParameters.yaw
+    : 0;
+  var targetInitialYaw = getSceneInitialYaw(targetSceneId, currentInitialYaw);
+  return normalizeAngle(targetInitialYaw + normalizeAngle(currentYaw - currentInitialYaw));
+}
+
+function getRelativeScenePitch(targetSceneId) {
+  var currentPitch = currentView.parameters().pitch;
+  var currentInitialPitch = currentSceneObj && currentSceneObj.data && currentSceneObj.data.initialViewParameters
+    ? currentSceneObj.data.initialViewParameters.pitch
+    : 0;
+  var targetInitialPitch = getSceneInitialPitch(targetSceneId, currentInitialPitch);
+  return targetInitialPitch + (currentPitch - currentInitialPitch);
+}
+
+/** 戻り(target) の到着ヨー。数値または { left:0, down:90, ... } を解釈 */
+function resolveReturnToTargetYawDeg(cfg, direction) {
+  if (!cfg || cfg.returnToTargetYawDeg === undefined || cfg.returnToTargetYawDeg === null || cfg.returnToTargetYawDeg === '') {
+    return null;
+  }
+  var val = cfg.returnToTargetYawDeg;
+  if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+    if (direction && val[direction] !== undefined && val[direction] !== null && val[direction] !== '') {
+      return degToRad(parseFloat(val[direction]));
+    }
+    return null;
+  }
+  return degToRad(parseFloat(val));
+}
+
+function getGreenArrowViewYawDeg() {
+  if (!currentView || !currentSceneObj) return 0;
+  var yaw = currentView.parameters().yaw;
+  var initYaw = currentSceneObj.data && currentSceneObj.data.initialViewParameters
+    ? currentSceneObj.data.initialViewParameters.yaw
+    : 0;
+  return radToDeg(normalizeAngle(yaw - initYaw));
+}
+
+/** 黄の左右が出る向き＝横向き。緑上下はこのときだけ */
+function isViewHorizontalForCrossCourse() {
+  if (!currentView) return false;
+  var yawDeg = radToDeg(normalizeAngle(currentView.parameters().yaw));
+  var yawAbs = Math.abs(yawDeg);
+  return !(yawAbs <= 45 || yawAbs > 135);
+}
+
+/** 黄の上下が出る向き＝正面。青左右はこのとき */
+function isViewForwardForCrossCourse() {
+  return !isViewHorizontalForCrossCourse();
+}
+
+function isAngleInRangeDeg(angle, start, end) {
+  if (start <= end) return angle >= start && angle <= end;
+  return angle >= end && angle <= start;
+}
+
+function getSideBranchSceneConfig(sceneId) {
+  if (!sceneId || !window.sideBranchConfig || !window.sideBranchConfig.branches) return null;
+  for (var i = 0; i < window.sideBranchConfig.branches.length; i++) {
+    if (window.sideBranchConfig.branches[i].sceneId === sceneId) {
+      return window.sideBranchConfig.branches[i];
+    }
+  }
+  return null;
+}
+
+/** 分岐・戻りの点滅はシーン正面からの相対ヨー（緑矢印と同じ）±この角度だけ */
+var JUNCTION_BLINK_HALF_DEG = 20;
+
+function isRelYawInBlinkSector(relYawDeg, centerDeg) {
+  return Math.abs(angleDiffDeg(relYawDeg, centerDeg)) <= JUNCTION_BLINK_HALF_DEG;
+}
+
+function getBranchBlinkSectors(cfg) {
+  var forwardDir = (cfg && cfg.forwardDir) ? String(cfg.forwardDir).toLowerCase() : 'right';
+  var rightDir = (cfg && cfg.rightDir) ? String(cfg.rightDir).toLowerCase() : 'up';
+  var leftDir = (cfg && cfg.leftDir) ? String(cfg.leftDir).toLowerCase() : 'right';
+  var backDir = (cfg && cfg.backDir) ? String(cfg.backDir).toLowerCase() : 'left';
+
+  var forwardDirs = [forwardDir];
+  if (cfg && cfg.crossroads && cfg.targetAlt) {
+    // 十字路：正面で左右点滅（forwardDir が右/左でなくても、左右だけ追加）
+    if (forwardDirs.indexOf('right') < 0) forwardDirs.push('right');
+    if (forwardDirs.indexOf('left') < 0) forwardDirs.push('left');
+  }
+
+  // 分岐点の点滅は 0°/±90°/180° の4方向（±20°）
+  return [
+    { center: 0, dirs: forwardDirs },
+    { center: 90, dirs: [rightDir] },
+    { center: -90, dirs: [leftDir] },
+    { center: 180, dirs: [backDir] }
+  ];
+}
+
+function getReturnBlinkSectors() {
+  // 戻り点：既定は「正面±20°で下」。
+  // cfg.returnCenterDeg があれば、その角度で下を点滅する（例: -90）。
+  return [{ center: 0, dirs: ['down'] }];
+}
+
+function collectJunctionBlinksFromSectors(relYawDeg, sectors) {
+  var blinks = [];
+  var forceShow = { up: false, down: false, left: false, right: false };
+  sectors.forEach(function(sec) {
+    if (!isRelYawInBlinkSector(relYawDeg, sec.center)) return;
+    sec.dirs.forEach(function(d) {
+      if (blinks.indexOf(d) < 0) blinks.push(d);
+      forceShow[d] = true;
+    });
+  });
+  return { blinks: blinks, forceShow: forceShow };
+}
+
+/**
+ * 通常の黄矢印（絶対ヨーで上下 or 左右）＋分岐時だけ、
+ * 相対ヨーの狭い扇形内で脇道用の矢印を追加表示・点滅。
+ */
+function getJunctionYellowLayout(cfg) {
+  if (!cfg) return null;
+  // 戻り地点は「履歴あり」または「target指定あり」のどちらかで有効
+  if (cfg.type === 'return' && !hasActiveSideReturn() && !cfg.target) return null;
+  if (cfg.type !== 'branch' && cfg.type !== 'return') return null;
+
+  var relYaw = getGreenArrowViewYawDeg();
+  var sectors;
+  if (cfg.type === 'return') {
+    // 戻り地点は「どの矢印で戻るか」を設定で持てるようにする
+    // - cfg.returnSectors: [{center:-90, dirs:['left']}, ...]
+    // - 無ければ cfg.returnCenterDeg の角度で down
+    if (Array.isArray(cfg.returnSectors) && cfg.returnSectors.length > 0) {
+      sectors = cfg.returnSectors
+        .map(function(s) {
+          if (!s) return null;
+          var center = (s.center !== undefined && s.center !== null && s.center !== '') ? parseFloat(s.center) : null;
+          var dirs = Array.isArray(s.dirs) ? s.dirs.map(function(d){return String(d).toLowerCase();}) : [];
+          if (center === null || !dirs.length) return null;
+          return { center: center, dirs: dirs };
+        })
+        .filter(Boolean);
+      if (!sectors.length) sectors = [{ center: 0, dirs: ['down'] }];
+    } else {
+      var c = (cfg.returnCenterDeg !== undefined && cfg.returnCenterDeg !== null && cfg.returnCenterDeg !== '')
+        ? parseFloat(cfg.returnCenterDeg)
+        : 0;
+      sectors = [{ center: c, dirs: ['down'] }];
+    }
+  } else {
+    sectors = getBranchBlinkSectors(cfg);
+  }
+  var collected = collectJunctionBlinksFromSectors(relYaw, sectors);
+  var isVert = getCurrentViewIsVert();
+  var fs = collected.forceShow;
+  return {
+    up: isVert || fs.up,
+    down: isVert || fs.down,
+    left: !isVert || fs.left,
+    right: !isVert || fs.right,
+    blinks: collected.blinks
+  };
+}
+
+function getCurrentViewIsVert() {
+  if (!currentView) return true;
+  var yawDeg = radToDeg(normalizeAngle(currentView.parameters().yaw));
+  var yawAbs = Math.abs(yawDeg);
+  return yawAbs <= 45 || yawAbs > 135;
+}
+
+function getAutoBlinkDirections(cfg) {
+  if (!cfg) return [];
+  var layout = getJunctionYellowLayout(cfg);
+  return layout ? layout.blinks.slice() : [];
+}
+
+/**
+ * 押した黄矢印の向き → 移動先シーンでのヨー補正（度）。
+ * 本線(aa)→脇道(bb/cc)の直角入り口用。map の yawOffset 未指定時の自動値。
+ */
+function inferSideBranchYawOffsetDeg(exitDirection, fromSceneId, targetId) {
+  var fromObj = scenesData[fromSceneId];
+  var targetObj = scenesData[targetId];
+  if (!fromObj || !targetObj) return 0;
+  var fromCourse = sceneCourseKey(fromObj.data);
+  var targetCourse = sceneCourseKey(targetObj.data);
+  var mainToSide = fromCourse === 'aa' && (targetCourse === 'bb' || targetCourse === 'cc');
+  var sideToSide = (fromCourse === 'bb' || fromCourse === 'cc') && (targetCourse === 'bb' || targetCourse === 'cc') && fromCourse !== targetCourse;
+  if (!mainToSide && !sideToSide) return 0;
+
+  if (targetCourse === 'bb') {
+    // aa→bb：入口は「直角に曲がる」前提
+    // - 正面で「右」を押す → bb側は -90°
+    // - 右を向いて「上」を押す → bb側は 0°（bbで前向き前進できるように）
+    if (exitDirection === 'right') return -90;
+    if (exitDirection === 'up') return 0;
+    if (exitDirection === 'left') return 90;
+    if (exitDirection === 'down') return 180;
+  }
+  if (targetCourse === 'cc') {
+    // bb→cc（分岐）：bb3 の「上」や「右」で cc2 に入る時は -90° を基準にしたい
+    if (fromCourse === 'bb' && targetCourse === 'cc') {
+      if (exitDirection === 'up' || exitDirection === 'right') return -90;
+      if (exitDirection === 'left') return 90;
+      if (exitDirection === 'down') return 180;
+    }
+    if (exitDirection === 'right') return 90;
+    if (exitDirection === 'left') return -90;
+    if (exitDirection === 'up') return 0;
+    if (exitDirection === 'down') return 180;
+  }
+  return 0;
+}
+
+/** 脇道遷移の到着ヨー（緑矢印 computeGreenArrowTargetYaw と同じ式） */
+function computeSideBranchTargetYaw(exit, fromSceneId, targetId) {
+  var targetObj = scenesData[targetId];
+  if (!targetObj || !currentView) return getRelativeSceneYaw(targetId);
+  var targetInitialYaw = targetObj.data.initialViewParameters
+    ? targetObj.data.initialViewParameters.yaw
+    : 0;
+  var departureYaw = currentView.parameters().yaw;
+  var cfg = getSideBranchSceneConfig(fromSceneId);
+  var yawOffsetDeg = inferSideBranchYawOffsetDeg(exit.direction, fromSceneId, targetId);
+  var yawSource = 'infer';
+  var yawExplicit = false;
+
+  if (cfg) {
+    if (cfg.entryYaw && cfg.entryYaw[exit.direction] != null && cfg.entryYaw[exit.direction] !== '') {
+      yawOffsetDeg = parseFloat(cfg.entryYaw[exit.direction]);
+      yawSource = 'cfg.entryYaw[' + exit.direction + ']';
+      yawExplicit = true;
+    } else if (cfg.yawOffset != null && cfg.yawOffset !== '' && exit.direction === 'right') {
+      yawOffsetDeg = parseFloat(cfg.yawOffset);
+      yawSource = 'cfg.yawOffset';
+      yawExplicit = true;
+    }
+  }
+
+  // NOTE: sideBranches は「分岐として曲がって入る」用途があるため、
+  // bb↔cc のようなコース間でも yawOffset がある場合は横移動扱いで潰さない。
+  // yawOffset が0で、かつ lateral の時だけ「見ている向き維持」を使う。
+  var lateral = isLateralViewpointMove(fromSceneId, targetId);
+  console.log(
+    '🧭 [sideYaw] from=' + fromSceneId + ' to=' + targetId +
+    ' dir=' + exit.direction +
+    ' lateral=' + lateral +
+    ' yawOffsetDeg=' + yawOffsetDeg +
+    ' source=' + yawSource
+  );
+  if (lateral) {
+    // 横移動でも「分岐として曲がって入る」指定がある時は、その角度を優先する
+    if (yawExplicit || (yawOffsetDeg !== undefined && yawOffsetDeg !== null && yawOffsetDeg !== '' && parseFloat(yawOffsetDeg) !== 0)) {
+      var y = normalizeAngle(targetInitialYaw + degToRad(parseFloat(yawOffsetDeg)));
+      console.log('🧭 [sideYaw] lateral: use yawOffset → yaw=' + radToDeg(normalizeAngle(y)).toFixed(1) + '°');
+      return y;
+    }
+    console.log('🧭 [sideYaw] lateral: keep relative yaw');
+    return getRelativeSceneYaw(targetId);
+  }
+
+  return computeGreenArrowTargetYaw(
+    { targetSceneId: targetId, yawOffset: yawOffsetDeg },
+    departureYaw,
+    targetInitialYaw,
+    fromSceneId
+  );
+}
+
+function getSideBranchExitForDirection(direction) {
+  if (!currentSceneObj) return null;
+  var cfg = getSideBranchSceneConfig(currentSceneObj.data.id);
+  if (!cfg) return null;
+  var blinks = getAutoBlinkDirections(cfg);
+  if (blinks.indexOf(direction) < 0) return null;
+
+  if (cfg.type === 'return') {
+    // 通常は「入ってきた履歴（returnScene）」へ戻る＝角度も追従できる
+    if (hasActiveSideReturn()) return { direction: direction, action: 'return' };
+    // ピンから直接入った場合だけ、target があればそこへ戻す（フォールバック）
+    if (cfg.target) return { direction: direction, action: 'return_to_target', targetSceneId: cfg.target };
+    return { direction: direction, action: 'return' };
+  }
+
+  var targetId = cfg.target;
+  if (direction === 'left' && cfg.targetAlt) targetId = cfg.targetAlt;
+  if (!targetId) return null;
+  return { direction: direction, targetSceneId: targetId };
+}
+
+function isSideBranchDirectionBlinking(direction) {
+  if (!currentSceneObj) return false;
+  var cfg = getSideBranchSceneConfig(currentSceneObj.data.id);
+  if (!cfg) return false;
+  return getAutoBlinkDirections(cfg).indexOf(direction) >= 0;
+}
+
+function trySideBranchMove(direction) {
+  var exit = getSideBranchExitForDirection(direction);
+  if (exit) {
+    console.log('🟨 [sideBranch] trigger: scene=' + (currentSceneObj ? currentSceneObj.data.id : '?') + ' dir=' + direction + ' action=' + (exit.action || 'move') + ' target=' + (exit.targetSceneId || ''));
+    executeSideBranch(exit);
+    return true;
+  }
+  if (isSideBranchDirectionBlinking(direction)) return true;
+  return false;
+}
+
+function executeSideBranch(exit) {
+  if (!currentSceneObj || !exit) return;
+  if (exit.action === 'return') {
+    returnToSideRouteOrigin();
+    return;
+  }
+  if (exit.action === 'return_to_target') {
+    var retId = resolveSceneId(exit.targetSceneId) || exit.targetSceneId;
+    if (!scenesData[retId]) {
+      console.warn('⚠️ 戻り(target): 遷移先が見つかりません:', exit.targetSceneId);
+      return;
+    }
+    // 直接ピンで入ったケース：既定は見え方維持だが、設定があれば到着yawを固定できる
+    var cfg = getSideBranchSceneConfig(currentSceneObj.data.id);
+    var ty;
+    var tyResolved = resolveReturnToTargetYawDeg(cfg, exit.direction);
+    if (tyResolved !== null) {
+      ty = tyResolved;
+    } else {
+      ty = getRelativeSceneYaw(retId);
+    }
+    var tp = getRelativeScenePitch(retId);
+    console.log(
+      '🟡 戻り(target): ' + currentSceneObj.data.id + ' → ' + retId +
+      ' dir=' + (exit.direction || '?') +
+      ' yaw=' + radToDeg(normalizeAngle(ty)).toFixed(1) + '°'
+    );
+    switchScene(retId, ty, tp, currentView.parameters().fov, true);
+    return;
+  }
+  var targetId = resolveSceneId(exit.targetSceneId) || exit.targetSceneId;
+  var targetObj = scenesData[targetId];
+  if (!targetObj) {
+    console.warn('⚠️ 脇道: 遷移先が見つかりません:', exit.targetSceneId);
+    return;
+  }
+  var fromSceneId = currentSceneObj.data.id;
+  var departureYaw = currentView.parameters().yaw;
+  var departurePitch = currentView.parameters().pitch;
+  var initYaw = targetObj.data.initialViewParameters
+    ? targetObj.data.initialViewParameters.yaw
+    : 0;
+  var targetYaw = computeSideBranchTargetYaw(exit, fromSceneId, targetId);
+  var targetPitch = isLateralViewpointMove(fromSceneId, targetId)
+    ? departurePitch
+    : getRelativeScenePitch(targetId);
+  var appliedOffsetDeg = radToDeg(normalizeAngle(targetYaw - initYaw));
+
+  window.returnScene = fromSceneId;
+  window.returnEntryScene = targetId;
+  window.departureYaw = departureYaw;
+  window.departurePitch = departurePitch;
+  window.targetSceneId = targetId;
+  window.entryInitialYaw = initYaw;
+  window.entryYawOffset = normalizeAngle(targetYaw - initYaw);
+  window.entryPitch = targetPitch;
+  window.allowYellowSideReturn = !isLateralViewpointMove(fromSceneId, targetId);
+
+  console.log(
+    '🟡 脇道: ' + fromSceneId + ' → ' + targetId + ' (' + exit.direction + ')' +
+    ' | relYaw=' + getGreenArrowViewYawDeg().toFixed(1) + '°' +
+    ' → yaw=' + radToDeg(normalizeAngle(targetYaw)).toFixed(1) + '° (offset=' + appliedOffsetDeg.toFixed(1) + '°)' +
+    ' pitch=' + radToDeg(targetPitch).toFixed(1) + '°'
+  );
+  switchScene(targetId, targetYaw, targetPitch, currentView.parameters().fov, true);
+}
+
+var ARROW_DIR_TO_ID = { up: 'arrowUp', down: 'arrowDown', left: 'arrowLeft', right: 'arrowRight' };
+
+function updateSideBranchBlink() {
+  ['up', 'down', 'left', 'right'].forEach(function(dir) {
+    var el = document.getElementById(ARROW_DIR_TO_ID[dir]);
+    if (!el) return;
+    if (isSideBranchDirectionBlinking(dir)) el.classList.add('arrow-blink');
+    else el.classList.remove('arrow-blink');
+  });
+}
+
+function sceneHasGreenArrowConfig(sceneId) {
+  if (!sceneId || !window.greenArrowConfig || !window.greenArrowConfig.arrows.length) return false;
+  for (var i = 0; i < window.greenArrowConfig.arrows.length; i++) {
+    if (window.greenArrowConfig.arrows[i].sceneId === sceneId) return true;
+  }
+  return false;
+}
+
+/** コース間ハブ＝青が左右両方あるシーン（23-bb004 のみ想定）。C1/D1 はハブではない */
+function isCrossCourseHub(sceneId) {
+  if (!sceneId || !window.blueArrowConfig || !window.blueArrowConfig.arrows.length) return false;
+  var hasLeft = false;
+  var hasRight = false;
+  for (var i = 0; i < window.blueArrowConfig.arrows.length; i++) {
+    var a = window.blueArrowConfig.arrows[i];
+    if (a.sceneId !== sceneId) continue;
+    if (a.side === 'left') hasLeft = true;
+    if (a.side === 'right') hasRight = true;
+  }
+  return hasLeft && hasRight;
+}
+
+var GREEN_ARROW_RETURN = { isReturn: true };
+
+function getGreenArrowsForScene(sceneId) {
+  var list = [];
+  if (!sceneId || !window.greenArrowConfig || !window.greenArrowConfig.arrows.length) return list;
+  for (var i = 0; i < window.greenArrowConfig.arrows.length; i++) {
+    var a = window.greenArrowConfig.arrows[i];
+    if (a.sceneId === sceneId) list.push(a);
+  }
+  return list;
+}
+
+function findGreenArrowByDirection(candidates, which) {
+  var wantDown = which === 'down';
+  var i, a, tid;
+  for (i = 0; i < candidates.length; i++) {
+    a = candidates[i];
+    tid = resolveSceneId(a.targetSceneId) || a.targetSceneId;
+    if (!isGreenArrowAllowed(a, tid)) continue;
+    var isDown = a.direction === 'down';
+    if (wantDown === isDown) return a;
+  }
+  if (!wantDown) {
+    for (i = 0; i < candidates.length; i++) {
+      a = candidates[i];
+      if (a.direction === 'down') continue;
+      tid = resolveSceneId(a.targetSceneId) || a.targetSceneId;
+      if (!isGreenArrowAllowed(a, tid)) continue;
+      return a;
+    }
+  }
+  return null;
+}
+
+function findGreenArrowInAngleRange(candidates, yawDeg, which) {
+  var wantDown = which === 'down';
+  var i, a, tid;
+  for (i = 0; i < candidates.length; i++) {
+    a = candidates[i];
+    tid = resolveSceneId(a.targetSceneId) || a.targetSceneId;
+    if (!isGreenArrowAllowed(a, tid)) continue;
+    if (!isAngleInRangeDeg(yawDeg, a.startAngle, a.endAngle)) continue;
+    var isDown = a.direction === 'down';
+    if (wantDown === isDown) return a;
+  }
+  if (!wantDown) {
+    for (i = 0; i < candidates.length; i++) {
+      a = candidates[i];
+      if (a.direction === 'down') continue;
+      tid = resolveSceneId(a.targetSceneId) || a.targetSceneId;
+      if (!isGreenArrowAllowed(a, tid)) continue;
+      if (isAngleInRangeDeg(yawDeg, a.startAngle, a.endAngle)) return a;
+    }
+  }
+  return null;
+}
+
+/**
+ * 緑＝青の上下版。ハブは黄と同じ横見えで緑上下（角度範囲は使わない）。
+ */
+function getGreenArrow(which) {
+  if (!currentSceneObj || !window.greenArrowConfig || !window.greenArrowConfig.arrows.length) return null;
+  var sceneId = currentSceneObj.data.id;
+  var candidates = getGreenArrowsForScene(sceneId);
+  if (!candidates.length) return null;
+  var hub = isCrossCourseHub(sceneId);
+
+  if (hub) {
+    if (!isViewHorizontalForCrossCourse() && !hasActiveSideReturn()) return null;
+    if (which === 'down' && hasActiveSideReturn()) return GREEN_ARROW_RETURN;
+    if (which === 'up' && hasActiveSideReturn()) return null;
+    return findGreenArrowByDirection(candidates, which);
+  }
+
+  var yawDeg = getGreenArrowViewYawDeg();
+  if (which === 'down') {
+    if (hasActiveSideReturn()) return GREEN_ARROW_RETURN;
+    return findGreenArrowInAngleRange(candidates, yawDeg, 'down');
+  }
+  return findGreenArrowInAngleRange(candidates, yawDeg, 'up');
+}
+
+function shouldShowGreenArrow(which) {
+  if (!currentSceneObj) return false;
+  var sceneId = currentSceneObj.data.id;
+  var candidates = getGreenArrowsForScene(sceneId);
+  if (!candidates.length) return false;
+  var hub = isCrossCourseHub(sceneId);
+  if (hub) {
+    if (which === 'down' && hasActiveSideReturn()) return true;
+    if (which === 'up' && hasActiveSideReturn()) return false;
+    if (!isViewHorizontalForCrossCourse()) return false;
+    return !!getGreenArrow(which);
+  }
+  if (which === 'down' && hasActiveSideReturn()) return true;
+  var yawDeg = getGreenArrowViewYawDeg();
+  return !!findGreenArrowInAngleRange(candidates, yawDeg, which);
+}
+
+function updateGreenArrows() {
+  var upEl = document.getElementById('arrowUpGreen');
+  var downEl = document.getElementById('arrowDownGreen');
+  if (upEl) { upEl.style.visibility = 'hidden'; upEl.classList.remove('visible'); }
+  if (downEl) { downEl.style.visibility = 'hidden'; downEl.classList.remove('visible'); }
+}
+
+function jumpByGreenArrow(direction) {
+  if (direction === 'down' && returnToSideRouteOrigin()) {
+    console.log('🟢 GREEN DOWN: 元シーンへ戻る（returnScene）');
+    return;
+  }
+
+  var arrow = getGreenArrow(direction === 'down' ? 'down' : 'up');
+  if (!arrow || arrow.isReturn) return;
+  var targetId = resolveSceneId(arrow.targetSceneId) || arrow.targetSceneId;
+  if (!isGreenArrowAllowed(arrow, targetId)) return;
+  var targetObj = scenesData[targetId];
+  if (!targetObj) {
+    console.warn('⚠️ 緑矢印: 遷移先シーンが見つかりません:', arrow.targetSceneId);
+    return;
+  }
+  var departureYaw = currentView.parameters().yaw;
+  var fromSceneId = currentSceneObj.data.id;
+  var returningToMain = isSideRoute(fromSceneId) && !isSideRoute(targetId) && !isPortalRoute(targetId);
+  // 黄・青と同じ：移動先へ yaw/pitch を引き継ぐ（map の yaw/pitch 補正は使わない）
+  var targetYaw = getRelativeSceneYaw(targetId);
+  var targetPitch = getRelativeScenePitch(targetId);
+
+  console.log('🟢 GREEN ' + (direction === 'down' ? 'DOWN' : 'UP') + ': ' + fromSceneId + ' → ' + targetId);
+
+  if (returningToMain) {
+    window.returnScene = null;
+    window.returnEntryScene = null;
+    window.departureYaw = null;
+    window.departurePitch = null;
+    window.entryInitialYaw = null;
+    window.entryYawOffset = 0;
+    window.entryPitch = null;
+    window.allowYellowSideReturn = false;
+  } else {
+    window.returnScene = fromSceneId;
+    window.returnEntryScene = targetId;
+    window.departureYaw = departureYaw;
+    window.departurePitch = currentView.parameters().pitch;
+    window.targetSceneId = targetId;
+    window.entryInitialYaw = targetObj.data.initialViewParameters.yaw;
+    window.entryYawOffset = 0;
+    window.entryPitch = targetPitch;
+    window.allowYellowSideReturn = !isLateralViewpointMove(fromSceneId, targetId);
+  }
+
+  switchScene(targetId, targetYaw, targetPitch, currentView.parameters().fov, true);
+}
+
+function getBlueArrow(side) {
+  if (!currentSceneObj || !window.blueArrowConfig || !window.blueArrowConfig.arrows.length) return null;
+  // 青＝左右スロット。正面のときだけ（黄の上下と同時に出る）
+  if (!isViewForwardForCrossCourse()) return null;
+  for (var i = 0; i < window.blueArrowConfig.arrows.length; i++) {
+    var arrow = window.blueArrowConfig.arrows[i];
+    if (arrow.sceneId === currentSceneObj.data.id && arrow.side === side) return arrow;
+  }
+  return null;
+}
+
+function updateBlueArrows() {
+  var leftEl = document.getElementById('arrowBlueLeft');
+  var rightEl = document.getElementById('arrowBlueRight');
+  if (leftEl) { leftEl.style.visibility = 'hidden'; leftEl.classList.remove('visible'); }
+  if (rightEl) { rightEl.style.visibility = 'hidden'; rightEl.classList.remove('visible'); }
+}
+
+function isLateralViewpointMove(fromSceneId, targetSceneId) {
+  var fromObj = scenesData[fromSceneId];
+  var targetObj = scenesData[targetSceneId];
+  if (!fromObj || !targetObj) return false;
+  var fromCourse = sceneCourseKey(fromObj.data);
+  var targetCourse = sceneCourseKey(targetObj.data);
+  if (fromCourse === 'aa' || targetCourse === 'aa') return false;
+  return fromCourse !== targetCourse;
+}
+
+function jumpByBlueArrow(side) {
+  var arrow = getBlueArrow(side);
+  if (!arrow) return;
+  var targetId = resolveSceneId(arrow.targetSceneId) || arrow.targetSceneId;
+  var targetObj = scenesData[targetId];
+  if (!targetObj) {
+    console.warn('⚠️ 青矢印: 遷移先シーンが見つかりません:', arrow.targetSceneId);
+    return;
+  }
+  var yawOff = arrow.yawOffset ? degToRad(parseFloat(arrow.yawOffset)) : 0;
+  var pitchOff = arrow.pitchOffset ? degToRad(parseFloat(arrow.pitchOffset)) : 0;
+  var targetYaw = normalizeAngle(getRelativeSceneYaw(targetId) + yawOff);
+  var targetPitch = getRelativeScenePitch(targetId) + pitchOff;
+
+  window.returnScene = currentSceneObj.data.id;
+  window.returnEntryScene = targetId;
+  window.departureYaw = currentView.parameters().yaw;
+  window.departurePitch = currentView.parameters().pitch;
+  window.entryInitialYaw = targetObj.data.initialViewParameters.yaw;
+  window.entryYawOffset = 0;
+  window.entryPitch = targetPitch;
+  window.allowYellowSideReturn = false;
+
+  switchScene(targetId, targetYaw, targetPitch, currentView.parameters().fov, true);
+}
+
+function getGreenArrowTargetPitch(targetId, pitchOffsetRad) {
+  return getRelativeScenePitch(targetId) + (pitchOffsetRad || 0);
+}
+
+function isPortalRoute(id) {
+  var obj = scenesData[id];
+  if (obj && obj.data) {
+    return obj.data.direction === 'portal' || sceneCourseKey(obj.data) === 'dd';
+  }
+  var scene = window.APP_DATA.scenes.find(function(s) { return s.id === id; });
+  return !!(scene && (scene.direction === 'portal' || sceneCourseKey(scene) === 'dd'));
+}
+
+function maxPositionForCourse(course) {
+  var max = -Infinity;
+  for (var id in scenesData) {
+    var sd = scenesData[id].data;
+    if (sceneCourseKey(sd) === course) max = Math.max(max, Number(sd.position));
+  }
+  return isFinite(max) ? max : null;
+}
+
+function isGreenArrowAllowed(arrow, targetId) {
+  if (!currentSceneObj || currentSceneObj.data.id !== arrow.sceneId) return false;
+  if (isPortalRoute(targetId)) {
+    var currentCourse = sceneCourseKey(currentSceneObj.data);
+    var maxPos = maxPositionForCourse(currentCourse);
+    // dd は「コース終点からの緑矢印でだけ入る」安全弁。B1 など入口側からの誤侵入を防ぐ。
+    if (maxPos !== null && Number(currentSceneObj.data.position) !== maxPos) return false;
+  }
+  return true;
+}
+
+function hasActiveSideReturn() {
+  return !!(
+    window.returnScene &&
+    scenesData[window.returnScene] &&
+    window.returnEntryScene &&
+    currentSceneObj &&
+    currentSceneObj.data.id === window.returnEntryScene
+  );
+}
+
+function resolveSideRouteReturnSceneId() {
+  if (hasActiveSideReturn()) return window.returnScene;
+  return null;
+}
+
+function returnToSideRouteOrigin() {
+  var returnSceneId = resolveSideRouteReturnSceneId();
+  if (!returnSceneId) return false;
+  var returnYaw;
+  var returnPitch;
+  if (window.departureYaw !== null && window.departureYaw !== undefined) {
+    var currentYaw = currentView.parameters().yaw;
+    var entryBaseYaw = (window.entryInitialYaw || 0) + (window.entryYawOffset || 0);
+    var sideYawOffset = normalizeAngle(currentYaw - entryBaseYaw);
+    returnYaw = normalizeAngle(window.departureYaw + sideYawOffset);
+  } else {
+    returnYaw = getRelativeSceneYaw(returnSceneId);
+  }
+  // pitch も yaw と同様：脇道内で変えた見上げ/見下げの差を、戻り先に反映する
+  if (window.departurePitch !== null && window.departurePitch !== undefined) {
+    if (window.entryPitch !== null && window.entryPitch !== undefined && currentView) {
+      var sidePitchOffset = currentView.parameters().pitch - window.entryPitch;
+      returnPitch = window.departurePitch + sidePitchOffset;
+    } else {
+      returnPitch = window.departurePitch;
+    }
+    var pitchClamp = Math.PI / 2 - 0.05;
+    returnPitch = Math.max(-pitchClamp, Math.min(pitchClamp, returnPitch));
+  } else {
+    returnPitch = getRelativeScenePitch(returnSceneId);
+  }
+
+  console.log(
+    '🚀 脇道入口 → 元シーンに戻る: ' + returnSceneId +
+    ' yaw=' + radToDeg(normalizeAngle(returnYaw)).toFixed(1) + '°' +
+    ' pitch=' + radToDeg(returnPitch).toFixed(1) + '°'
+  );
+  window.returnScene = null;
+  window.returnEntryScene = null;
+  window.departureYaw = null;
+  window.departurePitch = null;
+  window.entryInitialYaw = null;
+  window.entryYawOffset = 0;
+  window.entryPitch = null;
+  window.allowYellowSideReturn = false;
+  switchScene(returnSceneId, returnYaw, returnPitch, currentView.parameters().fov);
+  return true;
+}
+
+function executeMoveWithSideBranch(isUp) {
+  var dir = isUp ? 'up' : 'down';
+  if (trySideBranchMove(dir)) return;
+  executeMove(isUp);
+}
+
+function executeMove(isUp) {
+  var yaw = normalizeAngle(currentView.parameters().yaw);
+  var isLookingFront = Math.abs(getGreenArrowViewYawDeg()) <= 90;
+  
+  // ★特別ケース1（無効化）：左側コース最初のシーン → 右側コース移動は「扉クリック」でのみ
+  
+  // ★特別ケース2：左側コース → main に戻る
+  // 複数枚のbb/ccでは、上矢印を押した時に先のシーンがあれば本線へ戻さない。
+  if (currentSceneObj.data.direction === "left" && currentSceneObj.data.position === 1) {
+    var shouldReturn = (isLookingFront && !isUp) || (!isLookingFront && isUp);
+    if (shouldReturn) {
+      if (returnToSideRouteOrigin()) {
+        return;
+      }
+      return;
+    }
+  }
+  
+  // ★特別ケース4：ポータル専用シーン（脇道処理をスキップ）
+  if (currentSceneObj.data.direction === "portal") {
+    console.log('🎎 ポータル専用シーンです。脇道移動できません。');
+    return;
+  }
+  
+  // bb/cc：正面なら上で次へ・下で戻る、後ろ向きなら下で次へ・上で戻る（aa と同じ考え方）
+  if (isSideRoute(currentSceneObj.data.id)) {
+    var chainDelta = isUp ? (isLookingFront ? 1 : -1) : (isLookingFront ? -1 : 1);
+    var chainNextPos = currentSceneObj.data.position + chainDelta;
+    var chainNextId = null;
+    for (var fid in scenesData) {
+      if (scenesData[fid].data.position === chainNextPos &&
+          scenesData[fid].data.direction === currentSceneObj.data.direction) {
+        chainNextId = fid;
+        break;
+      }
+    }
+    if (chainNextId) {
+      switchScene(chainNextId, getRelativeSceneYaw(chainNextId), getRelativeScenePitch(chainNextId), currentView.parameters().fov);
+      return;
+    }
+    if (chainDelta < 0 && window.allowYellowSideReturn && returnToSideRouteOrigin()) {
+      return;
+    }
+    return;
+  }
+
+  // aa での通常の移動処理（黄色矢印）
+  // ★2月版のロジック復元：direction を考慮、executeMoveByDelta使用
+  var delta;
+  if (currentSceneObj.data.direction === 'iki') {
+    // 行きシーン：正面なら進む/下がる、後ろなら下がる/進む
+    delta = isUp ? (isLookingFront ? 1 : -1) : (isLookingFront ? -1 : 1);
+  } else {
+    // 帰りシーン：正面なら下がる/進む、後ろなら進む/下がる
+    delta = isUp ? (isLookingFront ? -1 : 1) : (isLookingFront ? 1 : -1);
+  }
+  if (flipDir) delta = -delta;
+  executeMoveByDelta(delta);
+}
+
+// ★ 自動再生（ズームインのみ・黒画面なし）コースごと完全独立保存
+var autoMoveInterval_ms=1875;
+var breathMax=75,breathMin=75,breathFov=breathMax,autoFadePct;
+var autoMoveTimer=null,autoMoveInterval=null,autoZoomInterval=null;
+var autoMoveActive=false,autoStepping=false;
+
+// 自動再生設定は作品を開き直しても勝手に戻らないよう、専用キーで固定保存する。
+function _ck(){return 'marzipano_auto_settings_v3_';}
+function _save(k,v){try{localStorage.setItem(_ck()+k,String(v));}catch(e){}}
+function _load(k,def){try{var v=localStorage.getItem(_ck()+k);return v!==null?v:def;}catch(e){return def;}}
+
+function applyAutoMoveSettings() {
+  var s=Math.max(1,Math.min(9,parseInt(_load('speed','6'))));
+  var z=Math.max(1,Math.min(9,parseInt(_load('zoom','2'))));
+  var f=Math.max(1,Math.min(9,parseInt(_load('fade','8'))));
+  document.getElementById('speedSlider').value=s;
+  autoMoveInterval_ms=speedToMs(s);
+  document.getElementById('speedVal').textContent=speedLabels[s]||s;
+  document.getElementById('zoomSlider').value=z;
+  breathMin=zoomToMin(z);
+  document.getElementById('zoomVal').textContent=zoomLabels[z]||z;
+  document.getElementById('fadeSlider').value=f;
+  autoFadePct=fadeToPct(f);
+  document.getElementById('fadeVal').textContent=fadeLabels[f]||f;
+}
+applyAutoMoveSettings();
+
+function readAutoFadePctFromSlider() {
+  var el = document.getElementById('fadeSlider');
+  if (!el) return autoFadePct || 0.875;
+  return fadeToPct(parseInt(el.value, 10) || 8);
+}
+
+function startContinuousZoom(){
+  if(autoZoomInterval){clearInterval(autoZoomInterval);autoZoomInterval=null;}
+  breathFov=breathMax;
+  if(currentView)currentView.setParameters({fov:degToRad(breathFov)});
+  var stepMs=50,range=breathMax-breathMin;
+  if(range<=0)return;
+  var degsPerStep=range/(autoMoveInterval_ms/stepMs);
+  autoZoomInterval=setInterval(function(){
+    if(!autoMoveActive||!currentView){clearInterval(autoZoomInterval);autoZoomInterval=null;return;}
+    breathFov-=degsPerStep;
+    if(breathFov<breathMin-0.05)breathFov=breathMin-0.05;
+    currentView.setParameters({fov:degToRad(breathFov)});
+  },stepMs);
+}
+function stopAutoMove(){if(autoMoveTimer){clearTimeout(autoMoveTimer);autoMoveTimer=null;}
+  if(autoMoveInterval){clearInterval(autoMoveInterval);autoMoveInterval=null;}
+  if(autoZoomInterval){clearInterval(autoZoomInterval);autoZoomInterval=null;}
+  autoMoveActive=false;autoStepping=false;
+  breathFov=breathMax;
+  if(currentView)currentView.setParameters({fov:degToRad(breathFov)});}
+function autoStepOnce(isUp,startYaw){if(!autoMoveActive||autoStepping)return;
+  if(Math.abs(radToDeg(normalizeAngle(currentView.parameters().yaw-startYaw)))>90){stopAutoMove();return;}
+  autoStepping=true;if(autoZoomInterval){clearInterval(autoZoomInterval);autoZoomInterval=null;}
+  var sceneBefore=currentSceneObj;executeMove(isUp);
+  if(currentSceneObj===sceneBefore){stopAutoMove();return;}
+  autoStepping=false;if(isUp)startContinuousZoom();}
+function setupArrow(btnId,isUp){var btn=document.getElementById(btnId);
+  function onPress(){if(autoMoveActive){stopAutoMove();return;}
+    autoMoveTimer=setTimeout(function(){autoMoveTimer=null;autoMoveActive=true;
+      autoFadePct=readAutoFadePctFromSlider();
+      var startYaw=currentView.parameters().yaw;if(isUp)startContinuousZoom();
+      autoMoveInterval=setInterval(function(){autoStepOnce(isUp,startYaw);},autoMoveInterval_ms);},500);}
+  function onRelease(){if(autoMoveTimer){clearTimeout(autoMoveTimer);autoMoveTimer=null;
+    if(!autoMoveActive)executeMoveWithSideBranch(isUp);}}
+  btn.addEventListener('mousedown',onPress);
+  btn.addEventListener('touchstart',function(e){e.preventDefault();onPress();});
+  btn.addEventListener('mouseup',onRelease);btn.addEventListener('touchend',onRelease);}
+
+setupArrow('arrowUp', true);
+setupArrow('arrowDown', false);
+
+
+// ★シンプルな上下矢印処理（pitch保持）
+function executeMoveSimple(isUp) {
+  // ★2月版のロジック復元：direction を考慮
+  if (!currentSceneObj) return;
+  
+  // ★ポータルシーン（dd001）では上下矢印を無効化
+  if (currentSceneObj.data.id === '17-dd001') return;
+  if (currentSceneObj.data.direction === 'portal') return;
+  
+  var isLookingFront = Math.abs(getGreenArrowViewYawDeg()) <= 90;
+  
+  var delta;
+  if (currentSceneObj.data.direction === 'iki') {
+    delta = isUp ? (isLookingFront ? 1 : -1) : (isLookingFront ? -1 : 1);
+  } else {
+    delta = isUp ? (isLookingFront ? -1 : 1) : (isLookingFront ? 1 : -1);
+  }
+  
+  executeMoveByDelta(delta);
+}
+
+// クリック時は直接executeMoveSimplifを呼び出す
+// ★上下矢印は setupArrow で処理（click イベントハンドラーは削除）
+
+// 左右矢印と緑矢印のみ click イベント
+document.getElementById('arrowLeft').addEventListener('click', function() {
+  if (autoMoveActive) { stopAutoMove(); return; }
+  executeSideMove('left');
+});
+document.getElementById('arrowRight').addEventListener('click', function() {
+  if (autoMoveActive) { stopAutoMove(); return; }
+  executeSideMove('right');
+});
+
+function executeSideMove(dir) {
+  if (!currentSceneObj) return;
+  if (trySideBranchMove(dir)) return;
+  if (currentSceneObj.data.id === '17-dd001') return;
+  if (currentSceneObj.data.direction === 'portal') return;
+  
+  // ★2月版のロジック復元：executeMoveByDelta使用
+  var yaw = degToRad(getGreenArrowViewYawDeg());
+  var delta;
+  // 期待通り「見ている向き」で左右を決める（bb/ccでも同じ）
+  // yaw<0（左向き）: 右=前進(+1) / 左=後退(-1)
+  // yaw>0（右向き）: 左=前進(+1) / 右=後退(-1)
+  if (yaw < 0) delta = (dir === 'right' ? 1 : -1);
+  else delta = (dir === 'left' ? 1 : -1);
+  if (flipDir) delta = -delta;
+  executeMoveByDelta(delta);
+}
+
+function normalizeAngle(a) { while (a > Math.PI) a -= 2*Math.PI; while (a < -Math.PI) a += 2*Math.PI; return a; }
+
+// ★ directionベースの判定（汎用化）
+function isLeftSide(id) {
+  var scene = window.APP_DATA.scenes.find(s => s.id === id);
+  return scene && scene.direction === "left";
+}
+function isRightSide(id) {
+  var scene = window.APP_DATA.scenes.find(s => s.id === id);
+  return scene && scene.direction === "right";
+}
+
+// ★ ポータルシーン一覧を動的に構築
+var PORTAL_SCENES = [];
+if (window.APP_DATA && window.APP_DATA.scenes) {
+  window.APP_DATA.scenes.forEach(function(scene) {
+    if (scene.direction === "portal") {
+      PORTAL_SCENES.push(scene.id);
+    }
+  });
+}
+console.log('🔹 PORTAL_SCENES (動的構築):', PORTAL_SCENES);
+
+function isSideRoute(id) { 
+  // ★ポータル専用シーンは脇道から除外
+  var scene = window.APP_DATA.scenes.find(s => s.id === id);
+  if (scene && scene.direction === "portal") return false;
+  return isLeftSide(id) || isRightSide(id); 
+}
+
+// 緑矢印クリック時の到着yawを計算
+// yawOffset は「移動先シーンの初期yawからの角度（度）」として扱う（例: -90 → 正面が-90°）
+function computeGreenArrowTargetYaw(arrow, departureYaw, targetInitialYaw, fromSceneId) {
+  var hasYawOffset = arrow.yawOffset !== undefined && arrow.yawOffset !== null && arrow.yawOffset !== '';
+  var yawOffRad = hasYawOffset ? degToRad(parseFloat(arrow.yawOffset)) : 0;
+  var targetId = resolveSceneId(arrow.targetSceneId) || arrow.targetSceneId;
+
+  // 同じ視点の横移動（bb/cc/dd）：見ている向きを維持（mapのyawOffsetは使わない）
+  if (isLateralViewpointMove(fromSceneId, targetId)) {
+    return getRelativeSceneYaw(targetId);
+  }
+
+  // 脇道（bb/cc）→ 本線（aa）へ戻る
+  if (isSideRoute(fromSceneId) && !isSideRoute(arrow.targetSceneId)) {
+    if (hasYawOffset) {
+      return normalizeAngle(targetInitialYaw + yawOffRad);
+    }
+    if (window.departureYaw !== null) {
+      return window.departureYaw;
+    }
+    if (isLeftSide(fromSceneId)) {
+      return normalizeAngle(departureYaw + targetInitialYaw + degToRad(90));
+    }
+    if (isRightSide(fromSceneId)) {
+      return normalizeAngle(departureYaw + targetInitialYaw - degToRad(90));
+    }
+    return departureYaw;
+  }
+
+  // 本線 → 脇道（bb/cc）へ入る
+  if (isLeftSide(arrow.targetSceneId) || isRightSide(arrow.targetSceneId)) {
+    // 本線から脇道へ入る時は、元の向きに引きずられず移動先の正面を向く。
+    // 必要なら map_generator の yaw補正で -90 / +90 などを指定する。
+    return normalizeAngle(targetInitialYaw + yawOffRad);
+  }
+  if (hasYawOffset) {
+    return normalizeAngle(targetInitialYaw + yawOffRad);
+  }
+  return normalizeAngle(departureYaw + yawOffRad);
+}
+
+function degToRad(d) { return d * Math.PI / 180; }
+function radToDeg(r) { return r * 180 / Math.PI; }
+window.goToMap = function() {
+  courseBgmSessionPlayed = {};
+  activeBgmCourse = null;
+  stopAllBGM();
+  location.href = urlParams.get('back') || 'map.html';
+};
+
+// ========================================
+// ★ BGM再生管理
+// ========================================
+function shouldPlayBGM() {
+  return audioEnabled && bgmPlaying && (bgmEnabled || bgmForce);
+}
+
+function normalizeBgmItem(raw, defaultLoop, extra) {
+  if (!raw) return null;
+  var item;
+  if (typeof raw === 'string') {
+    item = { file: raw, loop: defaultLoop === true };
+  } else if (typeof raw === 'object' && raw.file) {
+    item = { file: raw.file, loop: raw.loop === true };
+  }
+  if (!item || !item.file) return null;
+  if (extra) {
+    Object.keys(extra).forEach(function(key) {
+      item[key] = extra[key];
+    });
+  }
+  return item;
+}
+
+/** シーンの bgm / APP_DATA.sceneBgm / APP_DATA.courseBgm */
+function normalizeBgmItems(sceneData) {
+  if (!sceneData) return null;
+  var items = [];
+  var raw = sceneData.bgm;
+  if (Array.isArray(raw)) {
+    items = raw.map(function(item) {
+      return normalizeBgmItem(item, false);
+    });
+  } else if (typeof raw === 'string') {
+    items = raw.split(' ').map(function(s) { return s.trim(); }).filter(Boolean).map(function(f) { return normalizeBgmItem(f, false); });
+  } else {
+    var sb = data.sceneBgm || (window.APP_DATA && window.APP_DATA.sceneBgm);
+    if (sb) {
+      var sceneItem = sb[sceneData.id] || sb[sceneData.name];
+      var normalizedSceneItem = normalizeBgmItem(sceneItem, false, { fromScene: true });
+      if (normalizedSceneItem) items.push(normalizedSceneItem);
+    }
+  }
+  items = items.filter(function(it) { return it && it.file; });
+  if (items.length) return items;
+  var cb = data.courseBgm || (window.APP_DATA && window.APP_DATA.courseBgm);
+  if (cb && sceneData.course && cb[sceneData.course]) {
+    var normalizedCourseItem = normalizeBgmItem(cb[sceneData.course], false, { fromCourse: true });
+    if (normalizedCourseItem) return [normalizedCourseItem];
+  }
+  return null;
+}
+
+function sceneUsesCourseBgm(sceneData) {
+  if (!sceneData || sceneData.bgm) return false;
+  var cb = data.courseBgm || (window.APP_DATA && window.APP_DATA.courseBgm);
+  return !!(cb && sceneData.course && cb[sceneData.course]);
+}
+
+function playSceneBGM(sceneId) {
+  var sceneObj = scenesData[sceneId];
+  if (!sceneObj) return;
+  var course = sceneObj.data.course || null;
+
+  // BGM指定が無いコースへ入ったら、前コースの音をフェードアウトする。
+  var bgmItems = normalizeBgmItems(sceneObj.data);
+  if (!bgmItems || !bgmItems.length) {
+    stopAllBGM();
+    activeBgmCourse = null;
+    return;
+  }
+
+  if (!audioEnabled) return;
+  if (!shouldPlayBGM()) {
+    stopAllBGM();
+    return;
+  }
+
+  // bb→aa などコースが変わったら前コースのBGMを必ず止める
+  if (course && activeBgmCourse && course !== activeBgmCourse) {
+    stopAllBGM();
+    activeBgmCourse = null;
+  }
+
+  var bgmFiles = bgmItems.map(function(item) { return item.file; }).filter(Boolean);
+  if (bgmFiles.length === 0) {
+    stopAllBGM();
+    activeBgmCourse = null;
+    return;
+  }
+
+  var primaryFile = bgmFiles[0];
+
+  // 同一コース・同一曲が既に鳴っている → フェードやり直ししない（音量低下防止）
+  if (primaryFile && bgmAudios[primaryFile]) {
+    var cur = bgmAudios[primaryFile];
+    if (!cur.paused && !cur.ended && cur.volume > 0.05) {
+      if (cur.__fadeTimer) {
+        clearInterval(cur.__fadeTimer);
+        cur.__fadeTimer = null;
+      }
+      cur.volume = bgmVolume;
+      cur.loop = resolveLoopFlag(primaryFile, bgmItems[0]);
+      if (course) activeBgmCourse = course;
+      return;
+    }
+  }
+
+  var usesCourseBgmNow = bgmItems.some(function(item) { return item && item.fromCourse; });
+  if (course && courseBgmSessionPlayed[course] && usesCourseBgmNow && !resolveLoopFlag(primaryFile, bgmItems[0])) {
+    if (course) activeBgmCourse = course;
+    return;
+  }
+
+  var newBGMSet = {};
+  bgmFiles.forEach(function(file) { newBGMSet[file] = true; });
+
+  Object.keys(bgmAudios).forEach(function(key) {
+    if (!newBGMSet[key]) {
+      fadeOutAudio(bgmAudios[key], function() {
+        bgmAudios[key].pause();
+        delete bgmAudios[key];
+      });
+    }
+  });
+
+  bgmItems.forEach(function(item) {
+    var file = item.file;
+    if (!file) return;
+    if (!bgmAudios[file] || (bgmAudios[file].paused && !bgmAudios[file].ended)) {
+      playAudio('sounds/' + file, {
+        loop: resolveLoopFlag(file, item),
+        course: (item.fromCourse && course) ? course : null
+      });
+      if (item.fromCourse && course) activeBgmCourse = course;
+    } else {
+      bgmAudios[file].loop = resolveLoopFlag(file, item);
+      bgmAudios[file].volume = bgmVolume;
+      if (item.fromCourse && course) activeBgmCourse = course;
+    }
+  });
+}
+
+function resolveLoopFlag(fileName, item) {
+  if (item && item.loop === true) return true;
+  return false;
+}
+
+function playAudio(filePath, opts) {
+  opts = opts || {};
+  var audio = new Audio(filePath);
+  var key = filePath.replace('sounds/', '');
+  audio.loop = !!opts.loop;
+  audio.volume = 0;
+  audio.__bgmCourse = opts.course || null;
+  if (audio.__bgmCourse) courseBgmSessionPlayed[audio.__bgmCourse] = true;
+
+  audio.addEventListener('canplay', function() {
+    if (bgmSuppressedForVideo > 0) return;
+    fadeInAudio(audio, bgmVolume, 500);
+  });
+
+  audio.addEventListener('error', function() {
+    console.error('❌ BGM読込エラー:', filePath);
+  });
+
+  if (!audio.loop) {
+    audio.addEventListener('ended', function() {
+      if (audio.__bgmCourse) courseBgmSessionPlayed[audio.__bgmCourse] = true;
+      if (bgmAudios[key] === audio) delete bgmAudios[key];
+    });
+  }
+
+  audio.play().catch(function(err) {
+    console.error('❌ BGM再生エラー:', err);
+  });
+
+  bgmAudios[key] = audio;
+}
+
+function fadeOutBgmForVideo() {
+  bgmSuppressedForVideo++;
+  var keys = Object.keys(bgmAudios);
+  if (!keys.length) return;
+  keys.forEach(function(key) {
+    var a = bgmAudios[key];
+    if (!a) return;
+    fadeOutAudio(a, function() {
+      try { a.pause(); } catch (e) {}
+    });
+  });
+}
+
+function restoreBgmAfterVideo() {
+  if (bgmSuppressedForVideo > 0) bgmSuppressedForVideo--;
+  if (bgmSuppressedForVideo > 0) return;
+  if (!shouldPlayBGM()) return;
+  Object.keys(bgmAudios).forEach(function(key) {
+    var a = bgmAudios[key];
+    if (!a || a.ended) return;
+    a.play().catch(function() {});
+    fadeInAudio(a, bgmVolume, 500);
+  });
+}
+
+function fadeOutAudio(audio, callback) {
+  if (!audio || audio.volume === 0) {
+    if (callback) callback();
+    return;
+  }
+  if (audio.__fadeTimer) {
+    clearInterval(audio.__fadeTimer);
+    audio.__fadeTimer = null;
+  }
+  
+  var startVol = audio.volume;
+  var stepCount = bgmFadeOutDuration / 50;  // 50ms間隔
+  var stepVol = startVol / stepCount;
+  audio.__fadeTimer = setInterval(function() {
+    audio.volume = Math.max(0, audio.volume - stepVol);
+    if (audio.volume <= 0) {
+      clearInterval(audio.__fadeTimer);
+      audio.__fadeTimer = null;
+      audio.volume = 0;
+      if (callback) callback();
+    }
+  }, 50);
+}
+
+function fadeInAudio(audio, targetVol, duration) {
+  if (!audio) return;
+  if (audio.__fadeInTimer) {
+    clearInterval(audio.__fadeInTimer);
+    audio.__fadeInTimer = null;
+  }
+  if (audio.volume >= targetVol * 0.92) {
+    audio.volume = targetVol;
+    return;
+  }
+  var startVol = audio.volume;
+  var stepCount = Math.max(1, duration / 50);
+  var stepVol = (targetVol - startVol) / stepCount;
+  audio.__fadeInTimer = setInterval(function() {
+    if (audio.volume < targetVol) {
+      audio.volume = Math.min(targetVol, audio.volume + stepVol);
+    } else {
+      clearInterval(audio.__fadeInTimer);
+      audio.__fadeInTimer = null;
+      audio.volume = targetVol;
+    }
+  }, 50);
+}
+
+function stopAllBGM(instant) {
+  activeBgmCourse = null;
+  Object.keys(bgmAudios).forEach(function(key) {
+    if (instant) {
+      try {
+        bgmAudios[key].pause();
+        bgmAudios[key].currentTime = 0;
+      } catch (e) {}
+      delete bgmAudios[key];
+      return;
+    }
+    fadeOutAudio(bgmAudios[key], function() {
+      bgmAudios[key].pause();
+      delete bgmAudios[key];
+    });
+  });
+}
+
+function enableBGM() {
+  bgmEnabled = true;
+  localStorage.setItem('bgmEnabled', 'true');
+  console.log('🎵 BGM有効化');
+  if (currentSceneObj) playSceneBGM(currentSceneObj.data.id);
+}
+
+function disableBGM() {
+  bgmEnabled = false;
+  localStorage.setItem('bgmEnabled', 'false');
+  // 強制再生中でなければ停止
+  if (!bgmForce) stopAllBGM();
+  console.log('🔇 BGM無効化');
+}
+
+// デバッグ：初期シーンIDを確認
+console.log('🔵 IIFE外 urlParams:', urlParams.toString());
+console.log('🔵 IIFE外 urlParams.get("id"):', urlParams.get('id'));
+console.log('🔵 About to call switchScene with id:', urlParams.get('id') || '0-aa001');
+
+switchScene(urlParams.get('id') || '0-aa001');
+
+}
+</script>
+</body>
+</html>
