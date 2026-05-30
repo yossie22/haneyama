@@ -100,7 +100,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
   z-index: 200;
   display: block;
   box-sizing: border-box;
-  /* スマホ実機：data.js の px × 1.6（2月仕様）。PCプレビューは text_generator で px そのまま */
+  /* スマホ実機：data.js の px × 1.6（2月仕様）。PCプレビューは 文字入力 で px そのまま */
   width: 88vw;
   max-width: min(88vw, 42em);
   padding: 4px 10px;
@@ -482,7 +482,7 @@ window.blueArrowConfig = {
 // ★ infoHotspot テキスト管理
 window.sceneTextTimer  = null; // フェードアウト開始タイマー
 window.sceneTextHideTimer = null; // 非表示完了タイマー
-var sceneTextScale = 1.6;  // スマホ実機用（PCの text_generator プレビューに近い見え方）
+var sceneTextScale = 1.6;  // スマホ実機用（PCの 文字入力 プレビューに近い見え方）
 
 // ★3種類の法則を実装するためのグローバル変数
 window.returnScene = null;                    // 戻り先シーン
@@ -1140,6 +1140,11 @@ function bindPortalTap(el, onTap) {
 function onPortalHotspotTap(hs) {
   if (!hs || !hs.portalActive || !hs.ih) return;
   var ih = hs.ih;
+  if (ih.frameSequence && resolveFrameSequenceUrls(ih.frameSequence).length && ih.playVideoOnTap !== false && !isPortalDiveTransition(ih)) {
+    setPortalTappable(hs, false);
+    playLinkedPortalVideo(hs);
+    return;
+  }
   if (ih.videoSrc && ih.playVideoOnTap !== false && !isPortalDiveTransition(ih) && isSupportedFullscreenMediaSrc(ih.videoSrc)) {
     setPortalTappable(hs, false);
     playLinkedPortalVideo(hs);
@@ -1175,8 +1180,326 @@ function isSupportedFullscreenMediaSrc(src) {
 
 var fullscreenVideoOnEnd = null;
 var fullscreenFadeOutTimer = null;
+var fullscreenFrameSeqTimer = null;
+var clipPanoramaScene = null;
+var clipPanoramaView = null;
+var clipPanoramaGeometry = null;
+var clipPanoramaScenes = [];
+var clipPanoramaDestroyTimers = [];
 var VIDEO_FS_FADE_IN_MS = 1150;
 var VIDEO_FS_FADE_OUT_MS = 1000;
+
+function resolveFrameSequenceUrls(seq) {
+  if (!seq) return [];
+  if (Array.isArray(seq.files) && seq.files.length) {
+    return seq.files.filter(function(u) { return !!u; });
+  }
+  var folder = String(seq.folder || seq.dir || '').replace(/\\/g, '/');
+  if (folder && folder.slice(-1) !== '/') folder += '/';
+  var count = Number(seq.count || seq.length || 0);
+  var ext = seq.ext || '.jpg';
+  if (!count || count < 1) return [];
+
+  // 0-dd001.jpg, 1-dd002.jpg …（動画切り出し＋番号並べの命名）
+  if (seq.nameStyle === 'index-ddseq') {
+    var startIndex = seq.startIndex != null ? Number(seq.startIndex) : 0;
+    var startSeq = seq.startSeq != null ? Number(seq.startSeq) : 1;
+    var seqPad = seq.seqPad != null ? Number(seq.seqPad) : 3;
+    var seqPrefix = seq.seqPrefix || 'dd';
+    var urls = [];
+    for (var i = 0; i < count; i++) {
+      var idx = startIndex + i;
+      var seqNum = startSeq + i;
+      var seqStr = String(seqNum);
+      while (seqStr.length < seqPad) seqStr = '0' + seqStr;
+      urls.push(folder + idx + '-' + seqPrefix + seqStr + ext);
+    }
+    return urls;
+  }
+
+  var base = seq.base || seq.prefix || '';
+  if (!base && !folder) return [];
+  var start = seq.start != null ? Number(seq.start) : 1;
+  var pad = seq.pad != null ? Number(seq.pad) : 4;
+  var urls = [];
+  for (var j = 0; j < count; j++) {
+    var n = start + j;
+    var num = String(n);
+    while (num.length < pad) num = '0' + num;
+    urls.push((folder || '') + base + num + ext);
+  }
+  return urls;
+}
+
+function stopFullscreenFrameSequence() {
+  if (fullscreenFrameSeqTimer) {
+    clearTimeout(fullscreenFrameSeqTimer);
+    clearInterval(fullscreenFrameSeqTimer);
+    fullscreenFrameSeqTimer = null;
+  }
+}
+
+function clearClipPanoramaDestroyTimers() {
+  clipPanoramaDestroyTimers.forEach(function(t) { clearTimeout(t); });
+  clipPanoramaDestroyTimers = [];
+}
+
+function destroyClipPanoramaScene() {
+  clearClipPanoramaDestroyTimers();
+  clipPanoramaScenes.forEach(function(s) {
+    if (viewer) {
+      try { viewer.destroyScene(s); } catch (e) {}
+    }
+  });
+  clipPanoramaScenes = [];
+  clipPanoramaScene = null;
+  clipPanoramaView = null;
+}
+
+function preloadFrameUrls(urls) {
+  return Promise.all(urls.map(function(url) {
+    return new Promise(function(resolve, reject) {
+      var im = new Image();
+      im.onload = function() { resolve(im); };
+      im.onerror = function() { reject(new Error(url)); };
+      im.src = url;
+    });
+  }));
+}
+
+function showPanoramaFrameSequence(seq, opts) {
+  opts = opts || {};
+  var urls = resolveFrameSequenceUrls(seq);
+  if (!urls.length) {
+    console.warn('⚠️ frameSequence に画像がありません');
+    if (opts.onEnd) opts.onEnd();
+    return;
+  }
+  if (!viewer || !currentView) {
+    console.warn('⚠️ VR表示の準備ができていないため平面再生にフォールバック');
+    showFullscreenFrameSequence(seq, opts);
+    return;
+  }
+
+  fadeOutBgmForVideo();
+  stopFullscreenFrameSequence();
+  destroyClipPanoramaScene();
+  clipPanoramaGeometry = null;
+  hideFullscreenVideo(false, true);
+
+  var durationMs = Math.max(500, Number(seq.durationMs || opts.durationMs) || 5000);
+  var crossfadeMs = Math.max(0, Math.min(280, Number(seq.crossfadeMs) || 110));
+  var intervalMs = Math.max(crossfadeMs + 24, Math.round(durationMs / urls.length));
+  var holdMs = Math.max(8, intervalMs - crossfadeMs);
+  var savedParams = {
+    yaw: currentView.parameters().yaw,
+    pitch: currentView.parameters().pitch,
+    fov: currentView.parameters().fov
+  };
+
+  if (fullscreenFadeOutTimer) {
+    clearTimeout(fullscreenFadeOutTimer);
+    fullscreenFadeOutTimer = null;
+  }
+  fullscreenVideoOnEnd = opts.onEnd || null;
+
+  function finishSequence() {
+    stopFullscreenFrameSequence();
+    var cb = fullscreenVideoOnEnd;
+    fullscreenVideoOnEnd = null;
+    var waitMs = crossfadeMs + 80;
+    clipPanoramaDestroyTimers.push(setTimeout(function() {
+      destroyClipPanoramaScene();
+      clipPanoramaGeometry = null;
+      if (cb) cb();
+    }, waitMs));
+  }
+
+  function startPlayback(equirectWidth) {
+    clipPanoramaGeometry = new Marzipano.EquirectGeometry([{ width: equirectWidth }]);
+
+    function getViewParams() {
+      if (clipPanoramaView) return clipPanoramaView.parameters();
+      return savedParams;
+    }
+
+    function mountClipFrame(url, isFirst) {
+      var viewParams = getViewParams();
+      var limiter = Marzipano.RectilinearView.limit.traditional(
+        equirectWidth, 75 * Math.PI / 180, 120 * Math.PI / 180
+      );
+      var view = new Marzipano.RectilinearView({
+        yaw: viewParams.yaw,
+        pitch: viewParams.pitch,
+        fov: viewParams.fov
+      }, limiter);
+      var source = Marzipano.ImageUrlSource.fromString(url);
+      var scene = viewer.createScene({
+        source: source,
+        geometry: clipPanoramaGeometry,
+        view: view
+      });
+      var outgoing = clipPanoramaScene;
+      scene.switchTo({ transitionDuration: isFirst ? 0 : crossfadeMs });
+      clipPanoramaScene = scene;
+      clipPanoramaView = view;
+      clipPanoramaScenes.push(scene);
+      if (outgoing) {
+        clipPanoramaDestroyTimers.push(setTimeout(function() {
+          if (!viewer) return;
+          try { viewer.destroyScene(outgoing); } catch (e) {}
+          clipPanoramaScenes = clipPanoramaScenes.filter(function(s) { return s !== outgoing; });
+        }, crossfadeMs + 70));
+      }
+    }
+
+    preloadFrameUrls(urls).then(function() {
+      var frameIndex = 0;
+
+      function showNext() {
+        try {
+          mountClipFrame(urls[frameIndex], frameIndex === 0);
+        } catch (err) {
+          console.warn('⚠️ VR連番フレーム失敗:', urls[frameIndex], err);
+          destroyClipPanoramaScene();
+          clipPanoramaGeometry = null;
+          showFullscreenFrameSequence(seq, opts);
+          return;
+        }
+        frameIndex++;
+        if (frameIndex >= urls.length) {
+          fullscreenFrameSeqTimer = setTimeout(finishSequence, holdMs);
+        } else {
+          fullscreenFrameSeqTimer = setTimeout(showNext, holdMs + crossfadeMs);
+        }
+      }
+
+      showNext();
+      console.log(
+        '🌐 VR連番再生: ' + urls.length + '枚 / ' + (durationMs / 1000).toFixed(1) + '秒' +
+        ' (約' + Math.round(1000 / intervalMs) + 'fps, クロスフェード' + crossfadeMs + 'ms, 幅' + equirectWidth + ')'
+      );
+    }).catch(function(err) {
+      console.warn('⚠️ 連番画像の先読みに失敗:', err);
+      showFullscreenFrameSequence(seq, opts);
+    });
+  }
+
+  var probe = new Image();
+  probe.onload = function() {
+    var w = probe.naturalWidth;
+    var h = probe.naturalHeight;
+    if (h > 0 && Math.abs(w / h - 2) < 0.12) {
+      startPlayback(w);
+    } else {
+      console.warn('⚠️ 2:1パノラマではない (' + w + '×' + h + ')。平面再生にフォールバック');
+      showFullscreenFrameSequence(seq, opts);
+    }
+  };
+  probe.onerror = function() {
+    console.warn('⚠️ 1枚目を読み込めません:', urls[0], '— 平面再生を試します');
+    showFullscreenFrameSequence(seq, opts);
+  };
+  probe.src = urls[0];
+}
+
+function showFrameSequence(seq, opts) {
+  opts = opts || {};
+  var usePanorama = opts.preferPanorama === true || seq.vr === true || seq.display === 'panorama';
+  if (seq.display === 'flat') usePanorama = false;
+  if (usePanorama) showPanoramaFrameSequence(seq, opts);
+  else showFullscreenFrameSequence(seq, opts);
+}
+
+function showFullscreenFrameSequence(seq, opts) {
+  opts = opts || {};
+  destroyClipPanoramaScene();
+  var urls = resolveFrameSequenceUrls(seq);
+  if (!urls.length) {
+    console.warn('⚠️ frameSequence に画像がありません');
+    if (opts.onEnd) opts.onEnd();
+    return;
+  }
+  fadeOutBgmForVideo();
+  var overlay = document.getElementById('videoFullscreenOverlay');
+  var vid = document.getElementById('videoFullscreenPlayer');
+  var img = document.getElementById('imageFullscreenPlayer');
+  var startImg = document.getElementById('imageFullscreenStart');
+  if (!overlay || !img) return;
+
+  stopFullscreenFrameSequence();
+  if (fullscreenFadeOutTimer) {
+    clearTimeout(fullscreenFadeOutTimer);
+    fullscreenFadeOutTimer = null;
+  }
+  fullscreenVideoOnEnd = opts.onEnd || null;
+
+  if (vid) {
+    try { vid.pause(); } catch (e) {}
+    vid.removeAttribute('src');
+    vid.style.display = 'none';
+    vid.style.opacity = '0';
+  }
+  if (startImg) {
+    startImg.removeAttribute('src');
+    startImg.style.display = 'none';
+    startImg.style.opacity = '0';
+  }
+
+  var durationMs = Math.max(500, Number(seq.durationMs || opts.durationMs) || 5000);
+  var intervalMs = Math.max(20, Math.round(durationMs / urls.length));
+  var frameIndex = 0;
+
+  img.style.display = 'block';
+  img.style.transition = 'none';
+  img.style.transform = 'scale(1)';
+  img.style.transformOrigin = 'center center';
+  img.style.opacity = '1';
+
+  function finishSequence() {
+    stopFullscreenFrameSequence();
+    if (opts.manualEnd && fullscreenVideoOnEnd) {
+      var cb = fullscreenVideoOnEnd;
+      fullscreenVideoOnEnd = null;
+      cb();
+    } else {
+      hideFullscreenVideo(true, false);
+    }
+  }
+
+  function showFrame(idx) {
+    img.onerror = function() {
+      console.warn('⚠️ 連番画像を読み込めません:', urls[idx]);
+    };
+    img.src = urls[idx];
+  }
+
+  urls.forEach(function(u) {
+    var pre = new Image();
+    pre.src = u;
+  });
+
+  overlay.classList.remove('is-fading-out', 'is-visible', 'is-waiting-still', 'is-image-revealed');
+  overlay.classList.add('is-active');
+  overlay.setAttribute('aria-hidden', 'false');
+  showFrame(0);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      overlay.classList.add('is-visible');
+    });
+  });
+
+  fullscreenFrameSeqTimer = setInterval(function() {
+    frameIndex++;
+    if (frameIndex >= urls.length) {
+      finishSequence();
+      return;
+    }
+    showFrame(frameIndex);
+  }, intervalMs);
+
+  console.log('🎞 連番画像再生: ' + urls.length + '枚 / ' + (durationMs / 1000).toFixed(1) + '秒 (' + Math.round(1000 / intervalMs) + 'fps)');
+}
 
 function showFullscreenVideo(src, opts) {
   opts = opts || {};
@@ -1253,6 +1576,9 @@ function hideFullscreenVideo(callOnEnd, instant) {
   var img = document.getElementById('imageFullscreenPlayer');
   var startImg = document.getElementById('imageFullscreenStart');
   if (!overlay || !vid) return;
+
+  stopFullscreenFrameSequence();
+  destroyClipPanoramaScene();
 
   function finishHide() {
     overlay.classList.remove('is-active', 'is-visible', 'is-fading-out', 'is-waiting-still', 'is-image-revealed');
@@ -1386,7 +1712,7 @@ function playLinkedPortalVideo(hs) {
     clearTimeout(hs.autoFadeTimer);
     hs.autoFadeTimer = null;
   }
-  console.log('🎬 ポータル全画面メディア再生: ' + ih.videoSrc);
+  console.log('🎬 ポータル全画面メディア再生: ' + (ih.frameSequence ? ('連番' + resolveFrameSequenceUrls(ih.frameSequence).length + '枚') : ih.videoSrc));
   fadeOutBgmForVideo();
 
   if (hs.portalImg) {
@@ -1474,7 +1800,13 @@ function playLinkedPortalVideo(hs) {
   var useFullscreen = ih.videoFullscreen !== false;
   if (useFullscreen) {
     setTimeout(function() {
-      if (isSupportedImageSrc(ih.videoSrc)) {
+      if (ih.frameSequence && resolveFrameSequenceUrls(ih.frameSequence).length) {
+        showFrameSequence(ih.frameSequence, {
+          manualEnd: true,
+          onEnd: finishPortalVideo,
+          preferPanorama: ih.frameSequence.vr !== false
+        });
+      } else if (isSupportedImageSrc(ih.videoSrc)) {
         showFullscreenImage(ih.videoSrc, {
           zoomStartScale: ih.stillZoomStartScale || ih.videoStillZoomStartScale || 2.7,
           zoomOrigin: ih.stillZoomOrigin || ih.videoStillZoomOrigin || '32% 45%',
@@ -1523,8 +1855,10 @@ function playLinkedPortalVideo(hs) {
   };
 }
 
-function pauseAllSceneVideos() {
-  hideFullscreenVideo(false, true);
+function pauseAllSceneVideos(keepFullscreenOverlay) {
+  if (!keepFullscreenOverlay) {
+    hideFullscreenVideo(false, true);
+  }
   if (!window.sceneVideoEls) return;
   window.sceneVideoEls.forEach(function(item) {
     try {
@@ -1606,13 +1940,13 @@ function collectImageHotspotsForScene(sceneId) {
   return list;
 }
 
-function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot) {
+function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreenOverlay) {
   var obj = scenesData[sceneId];
   if (!obj) return;
   
   console.log('🔵 switchScene: sceneId=' + sceneId + ', yaw=' + (yaw !== undefined ? radToDeg(yaw).toFixed(2) + '°' : 'undefined') + ', pitch=' + (pitch !== undefined ? radToDeg(pitch).toFixed(2) + '°' : 'undefined'));
   
-  pauseAllSceneVideos();
+  pauseAllSceneVideos(!!keepFullscreenOverlay);
   // ★hotspot フラグをリセット（新しいシーンで再度表示可能にする）
   if (window.hotspotImages) {
     window.hotspotImages = [];
@@ -2662,10 +2996,103 @@ function returnToSideRouteOrigin() {
   return true;
 }
 
+function getSceneInterstitialConfig(sceneData, isUp) {
+  if (!sceneData) return null;
+  var key = isUp ? 'up' : 'down';
+  if (sceneData.sceneInterstitial && sceneData.sceneInterstitial[key]) {
+    return sceneData.sceneInterstitial[key];
+  }
+  if (sceneData.arrowClip && sceneData.arrowClip[key]) {
+    return sceneData.arrowClip[key];
+  }
+  return null;
+}
+
 function executeMoveWithSideBranch(isUp) {
   var dir = isUp ? 'up' : 'down';
   if (trySideBranchMove(dir)) return;
   executeMove(isUp);
+}
+
+/** 上／下矢印の長押し（約0.5秒）で sceneInterstitial を再生（短押しは通常の1コマ移動） */
+function trySceneInterstitialOnLongPress(isUp) {
+  return trySceneInterstitial(isUp);
+}
+
+/** 全画面動画のあと：オーバーレイを残したまま pano を切り替え、からオーバーレイをフェードアウト */
+function finishSceneInterstitialTransition(targetId) {
+  switchScene(
+    targetId,
+    getRelativeSceneYaw(targetId),
+    getRelativeScenePitch(targetId),
+    currentView.parameters().fov,
+    true,
+    true
+  );
+  setTimeout(function() {
+    hideFullscreenVideo(false, false);
+  }, 720);
+}
+
+function trySceneInterstitial(isUp) {
+  if (!currentSceneObj || !currentSceneObj.data) return false;
+  var cfg = getSceneInterstitialConfig(currentSceneObj.data, isUp);
+  if (!cfg) return false;
+
+  var isLookingFront = Math.abs(getGreenArrowViewYawDeg()) <= 90;
+  if (cfg.whenLooking === 'front' && !isLookingFront) return false;
+  if (cfg.whenLooking === 'back' && isLookingFront) return false;
+
+  var targetId = cfg.targetScene;
+  if (!targetId || !scenesData[targetId]) {
+    console.warn('⚠️ sceneInterstitial: 遷移先がありません', targetId);
+    return false;
+  }
+
+  function goTargetInstant() {
+    switchScene(
+      targetId,
+      getRelativeSceneYaw(targetId),
+      getRelativeScenePitch(targetId),
+      currentView.parameters().fov,
+      true
+    );
+  }
+
+  var videoSrc = cfg.videoSrc || cfg.mp4;
+  if (videoSrc && isSupportedVideoSrc(videoSrc)) {
+    console.log('🎬 シーン間挿入(2D動画): ' + currentSceneObj.data.id + ' → ' + targetId + ' / ' + videoSrc);
+    fadeOutBgmForVideo();
+    showFullscreenVideo(videoSrc, {
+      loop: cfg.loop === true,
+      manualEnd: true,
+      onEnd: function() {
+        finishSceneInterstitialTransition(targetId);
+      }
+    });
+    return true;
+  }
+
+  var seq = cfg.frameSequence;
+  if (seq && resolveFrameSequenceUrls(seq).length) {
+    console.log('🎞 シーン間挿入(連番画像): ' + currentSceneObj.data.id + ' → ' + targetId);
+    showFrameSequence(seq, {
+      manualEnd: true,
+      onEnd: function() {
+        finishSceneInterstitialTransition(targetId);
+      },
+      preferPanorama: seq.vr === true
+    });
+    return true;
+  }
+
+  if (cfg.skipOnly === true || cfg.instant === true) {
+    console.log('⏭ シーン間ショートカット: ' + currentSceneObj.data.id + ' → ' + targetId);
+    goTargetInstant();
+    return true;
+  }
+
+  return false;
 }
 
 function executeMove(isUp) {
@@ -2789,10 +3216,14 @@ function autoStepOnce(isUp,startYaw){if(!autoMoveActive||autoStepping)return;
   autoStepping=false;if(isUp)startContinuousZoom();}
 function setupArrow(btnId,isUp){var btn=document.getElementById(btnId);
   function onPress(){if(autoMoveActive){stopAutoMove();return;}
-    autoMoveTimer=setTimeout(function(){autoMoveTimer=null;autoMoveActive=true;
+    autoMoveTimer=setTimeout(function(){
+      autoMoveTimer=null;
+      if(trySceneInterstitialOnLongPress(isUp)) return;
+      autoMoveActive=true;
       autoFadePct=readAutoFadePctFromSlider();
       var startYaw=currentView.parameters().yaw;if(isUp)startContinuousZoom();
-      autoMoveInterval=setInterval(function(){autoStepOnce(isUp,startYaw);},autoMoveInterval_ms);},500);}
+      autoMoveInterval=setInterval(function(){autoStepOnce(isUp,startYaw);},autoMoveInterval_ms);
+    },500);}
   function onRelease(){if(autoMoveTimer){clearTimeout(autoMoveTimer);autoMoveTimer=null;
     if(!autoMoveActive)executeMoveWithSideBranch(isUp);}}
   btn.addEventListener('mousedown',onPress);

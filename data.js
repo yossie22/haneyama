@@ -1,4 +1,4 @@
-// GENERATOR_HISTORY: [{"sceneId":"0-aa001","text":"真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.96}]
+// GENERATOR_HISTORY: [{"sceneId":"1-aa002","text":"上矢印の長押しで動画になり その後頂上の標識へ進みます。","fontSize":20,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.56},{"sceneId":"0-aa001","text":"真っ先に花畑に向かったのですが                                                                      霧が深くて引き返し先に登山です。","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.96}]
 var APP_DATA = {
   "courseBgm": {
     "aa": {
@@ -42,13 +42,13 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.96,
+          "yaw": 0.56,
           "pitch": 1.49,
           "rotation": 0,
           "title": "真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。",
           "text": "真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。",
           "style": {
-            "fontSize": "21px",
+            "fontSize": "20px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
             "color": "#ffff00"
           }
@@ -91,13 +91,13 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.96,
+          "yaw": 0.56,
           "pitch": 1.49,
           "rotation": 0,
-          "title": "ここではゆっくり右に回すとポータルが現れるので　　　　　　　　　　　　　　　　　　　　　　　　　それを押せばショート動画に切り替わります。",
-          "text": "ここではゆっくり右に回すとポータルが現れるので　　　　　　　　　　　　　　　　　　　　　　　　　それを押せばショート動画に切り替わります。",
+          "title": "上矢印の長押しで動画になり その後頂上の標識へ進みます。",
+          "text": "上矢印の長押しで動画になり その後頂上の標識へ進みます。",
           "style": {
-            "fontSize": "21px",
+            "fontSize": "20px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
             "color": "#ffff00"
           }
@@ -105,28 +105,12 @@ var APP_DATA = {
       ],
       "position": 2,
       "course": "aa",
-      "imageHotspots": [
-        {
-          "sceneStartId": "1-aa002",
-          "sourceScene": "1-aa002",
-          "src": "登山中.png",
-          "width": 700,
-          "height": 700,
-          "yawCenter": 90,
-          "yawRange": 20,
-          "targetScene": "1-aa002",
-          "targetYaw": 0.20943951023931953,
-          "targetPitch": 0.3839724354387525,
-          "fadeTime": 5,
-          "dispTime": 5000,
-          "startHoldTime": 1000,
-          "effect": "grow",
-          "resetDisplay": false,
+      "sceneInterstitial": {
+        "up": {
           "videoSrc": "登山中.mp4",
-          "playVideoOnTap": true,
-          "videoLoop": false
+          "targetScene": "3-aa004"
         }
-      ]
+      }
     },
     {
       "id": "2-aa003",
@@ -486,13 +470,13 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.96,
+          "yaw": 0.56,
           "pitch": 1.49,
           "rotation": 0,
           "title": "ここでは右側の見事なミヤマキリシマに圧倒されました！",
           "text": "ここでは右側の見事なミヤマキリシマに圧倒されました！",
           "style": {
-            "fontSize": "21px",
+            "fontSize": "20px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
             "color": "#ffff00"
           }
@@ -715,13 +699,13 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.96,
+          "yaw": 0.56,
           "pitch": 1.49,
           "rotation": 0,
           "title": "ゆっくり右回転でポータルが現れ花びらのアップに移動できます。",
           "text": "ゆっくり右回転でポータルが現れ花びらのアップに移動できます。",
           "style": {
-            "fontSize": "21px",
+            "fontSize": "20px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
             "color": "#ffff00"
           }
@@ -788,13 +772,13 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.96,
+          "yaw": 0.56,
           "pitch": 1.49,
           "rotation": 0,
           "title": "ゆっくり回転でポータルが現れそこから動画に移行します。",
           "text": "ゆっくり回転でポータルが現れそこから動画に移行します。",
           "style": {
-            "fontSize": "21px",
+            "fontSize": "20px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
             "color": "#ffff00"
           }
