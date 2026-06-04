@@ -1065,21 +1065,22 @@ var APP_DATA = {
           "src": "video/guide_alpha.webm",
           "yaw": 28.7,
           "pitch": 18.6,
-          "width": 739,
-          "height": 776,
+          "width": 872,
+          "height": 916,
           "radius": 850,
           "fade": 0,
           "fadeBottom": 10,
           "fullscreen": false,
           "objectFit": "contain",
           "tone": {
-            "brightness": 0.99,
-            "contrast": 1.08,
+            "brightness": 0.93,
+            "contrast": 1.12,
             "saturate": 0.88
           },
           "autoplay": true,
           "loop": false,
-          "fadeInMs": 0
+          "fadeInMs": 0,
+          "srcIos": "video/guide_alpha_ios.mp4"
         }
       ]
     }
