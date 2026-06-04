@@ -309,6 +309,22 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 .guide-ios-screen-overlay.guide-img-matte {
   mix-blend-mode: normal;
 }
+.guide-ios-screen-overlay.guide-ios-canvas-matte {
+  mix-blend-mode: normal;
+  background: transparent !important;
+  isolation: isolate;
+}
+.guide-ios-screen-overlay.guide-ios-canvas-matte .scene-video-mask {
+  background: transparent;
+}
+.guide-ios-screen-overlay.guide-ios-canvas-matte canvas.guide-video-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  background: transparent;
+}
 .scene-video-mask.guide-canvas-matte canvas.guide-video-canvas {
   display: block;
   width: 100%;
@@ -815,7 +831,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm11';
+var BUILD_STAMP = '2026-06-05-ipadm12';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2114,13 +2130,12 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
     sceneId: sceneId,
     guidePlaybackDone: false
   };
-  entry.iosUseNativeVideo = true;
-  setupGuideIosLightenMatte(vid, maskWrap, vh, entry);
+  setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry);
   setupGuideVideoPlayback(vid, vh, sceneId, entry);
   window.sceneVideoEls.push(entry);
   bindGuideIosOverlayTracking();
   updateAllGuideIosOverlays();
-  console.log('🎬 iPad: 画面固定オーバーレイ（動画をそのまま再生）');
+  console.log('🎬 iPad: Canvas黒抜き（画面固定）');
   vid.addEventListener('error', function onIosVidErr() {
     console.warn('🎬 iPad 動画失敗、別形式を試します:', vid.src, vid.error);
     var webm = videoHotspotSrcUrl(vh.src);
@@ -2476,9 +2491,83 @@ function guidePreferCanvasBlackKey(vh) {
 }
 
 function stopGuideCanvasMatte(entry) {
-  if (!entry || !entry.guideCanvasRaf) return;
-  cancelAnimationFrame(entry.guideCanvasRaf);
-  entry.guideCanvasRaf = 0;
+  if (!entry) return;
+  if (entry.guideCanvasRaf) {
+    cancelAnimationFrame(entry.guideCanvasRaf);
+    entry.guideCanvasRaf = 0;
+  }
+  stopGuideIosScreenCanvasPaint(entry);
+}
+
+function stopGuideIosScreenCanvasPaint(entry) {
+  if (!entry) return;
+  if (entry.iosPaintTimer) {
+    clearInterval(entry.iosPaintTimer);
+    entry.iosPaintTimer = 0;
+  }
+  if (entry.vid && entry.iosVfcId != null && entry.vid.cancelVideoFrameCallback) {
+    try { entry.vid.cancelVideoFrameCallback(entry.iosVfcId); } catch (e) {}
+    entry.iosVfcId = null;
+  }
+}
+
+function startGuideIosScreenCanvasPaint(entry, thr) {
+  if (!entry || !entry.guideCanvasCtx || !entry.vid) return;
+  stopGuideIosScreenCanvasPaint(entry);
+  function tick() {
+    if (entry.guidePlaybackDone) return;
+    paintGuideCanvasOnce(entry, thr);
+  }
+  tick();
+  entry.iosPaintTimer = setInterval(tick, 66);
+  if (typeof entry.vid.requestVideoFrameCallback === 'function') {
+    var onFrame = function() {
+      tick();
+      if (!entry.guidePlaybackDone && entry.vid && !entry.vid.paused && !entry.vid.ended) {
+        entry.iosVfcId = entry.vid.requestVideoFrameCallback(onFrame);
+      }
+    };
+    entry._iosVfcHandler = onFrame;
+    entry.vid.addEventListener('play', function rvfStart() {
+      if (entry.iosVfcId != null) return;
+      entry.iosVfcId = entry.vid.requestVideoFrameCallback(onFrame);
+    });
+  }
+}
+
+function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
+  if (!vid || !maskWrap || !entry) return false;
+  entry.iosUseNativeVideo = false;
+  entry.wrap.classList.remove('guide-ios-visible', 'guide-img-matte');
+  entry.wrap.classList.add('guide-ios-canvas-matte');
+  maskWrap.classList.remove('guide-matte-lighten', 'guide-img-matte');
+  maskWrap.style.background = 'transparent';
+  var oldC = maskWrap.querySelector('canvas.guide-video-canvas');
+  if (oldC && oldC.parentNode) oldC.parentNode.removeChild(oldC);
+  var canvas = document.createElement('canvas');
+  canvas.className = 'guide-video-canvas';
+  maskWrap.insertBefore(canvas, vid);
+  vid.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;pointer-events:none';
+  entry.guideCanvas = canvas;
+  entry.guideCanvasCtx = canvas.getContext('2d', { willReadFrequently: true });
+  applyVideoHotspotObjectFit(vid, vh);
+  applyVideoHotspotTone(canvas, vh.tone);
+  var thr = vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 34;
+  function paint() { paintGuideCanvasOnce(entry, thr); }
+  vid.addEventListener('loadeddata', paint);
+  vid.addEventListener('seeked', paint);
+  vid.addEventListener('play', function() { startGuideIosScreenCanvasPaint(entry, thr); });
+  vid.addEventListener('pause', function() {
+    stopGuideIosScreenCanvasPaint(entry);
+    paint();
+  });
+  vid.addEventListener('ended', function() {
+    stopGuideIosScreenCanvasPaint(entry);
+    paint();
+  });
+  setTimeout(paint, 300);
+  setTimeout(paint, 1200);
+  return true;
 }
 
 function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold) {
@@ -2511,8 +2600,8 @@ function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold) {
 
 function syncGuideCanvasSize(entry) {
   if (!entry || !entry.guideCanvas || !entry.wrap) return;
-  var w = parseInt(entry.wrap.style.width, 10) || 280;
-  var h = parseInt(entry.wrap.style.height, 10) || 380;
+  var w = entry.overlayDrawW || parseInt(entry.wrap.style.width, 10) || entry.overlayW || 280;
+  var h = entry.overlayDrawH || parseInt(entry.wrap.style.height, 10) || entry.overlayH || 380;
   if (entry.guideCanvas.width !== w) entry.guideCanvas.width = w;
   if (entry.guideCanvas.height !== h) entry.guideCanvas.height = h;
 }
@@ -2556,7 +2645,8 @@ function finishGuidePlayback(vid, sceneId, entry) {
   }
   try { vid.pause(); } catch (e) {}
   seekGuideVideoToLastFrame(vid);
-  if (entry.guideCanvasCtx || entry.guideDisplayImg) {
+  stopGuideIosScreenCanvasPaint(entry);
+  if (entry.guideCanvasCtx) {
     paintGuideCanvasOnce(entry, 34);
   }
 }
@@ -2839,10 +2929,10 @@ function updateIosScreenOverlayFromHotspot(entry, vh) {
   }
   if (entry.vid && entry.maskWrap) {
     applyVideoHotspotObjectFit(entry.vid, vh);
-    applyVideoHotspotTone(entry.vid, vh.tone);
-    applyVideoHotspotTone(entry.wrap, vh.tone);
+    if (entry.guideCanvas) applyVideoHotspotTone(entry.guideCanvas, vh.tone);
   }
   updateAllGuideIosOverlays();
+  paintGuideCanvasOnce(entry, 34);
 }
 
 function tryApplyPlacerPreviewHotspot() {
