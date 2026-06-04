@@ -534,16 +534,8 @@ var flipDir = urlParams.get('flip') === '1';
 // ★タイルフォルダ名（実フォルダに合わせて 'tiles'）
 window.TILES_BASE = "tiles1024";
 
-// data.js を fetch で読み込む（古い <script src="data.js"> キャッシュを避ける）
+// data.js 読み込み（iPad Safari 向け: script + クエリでキャッシュ回避。new Function は使わない）
 (function loadDataAndBoot() {
-  function loadAppDataFromJsText(text) {
-    var fn = new Function(text + '\n;return typeof APP_DATA !== "undefined" ? APP_DATA : null;');
-    var appData = fn();
-    if (!appData) throw new Error('APP_DATA が未定義');
-    window.APP_DATA = appData;
-    return appData;
-  }
-
   function logGuideHotspotFromData() {
     try {
       var sc = (window.APP_DATA && window.APP_DATA.scenes) || [];
@@ -559,7 +551,6 @@ window.TILES_BASE = "tiles1024";
   }
 
   function applyDataOverlayAndStart() {
-    // 任意: data_overlay.json があれば APP_DATA にマージ（作品固有のポータル/テキストを data.js と分離できる）
     fetch('data_overlay.json', { cache: 'no-store' })
       .then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -583,41 +574,30 @@ window.TILES_BASE = "tiles1024";
         startViewer();
       })
       .catch(function() {
-        // 無ければそのまま起動
         startViewer();
       });
   }
 
-  var dataCacheBust = urlParams.get('_cv') || urlParams.get('_dv') || String(Date.now());
-  fetch('data.js?_=' + encodeURIComponent(dataCacheBust), { cache: 'no-store' })
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    })
-    .then(function(text) {
-      loadAppDataFromJsText(text);
+  function loadDataJsViaScript() {
+    var dataCacheBust = urlParams.get('_cv') || urlParams.get('_dv') || String(Date.now());
+    var s = document.createElement('script');
+    s.src = 'data.js?_=' + encodeURIComponent(dataCacheBust);
+    s.onload = function() {
+      if (!window.APP_DATA) {
+        alert('data.js を読み込めませんでした（APP_DATA 未定義）。GitHub の data.js を確認してください。');
+        return;
+      }
       logGuideHotspotFromData();
-      console.log('✅ data.js をキャッシュなしで読み込みました (fetch)');
+      console.log('✅ data.js を読み込みました:', s.src);
       applyDataOverlayAndStart();
-    })
-    .catch(function(err) {
-      console.warn('⚠ fetch失敗、script タグで再試行:', err);
-      var s = document.createElement('script');
-      s.src = 'data.js?_=' + Date.now();
-      s.onload = function() {
-        if (!window.APP_DATA) {
-          alert('data.js の読み込みに失敗しました。ネットワークを確認してください。');
-          return;
-        }
-        logGuideHotspotFromData();
-        console.log('✅ data.js を script タグで読み込みました');
-        applyDataOverlayAndStart();
-      };
-      s.onerror = function() {
-        alert('data.js を読み込めませんでした。');
-      };
-      document.head.appendChild(s);
-    });
+    };
+    s.onerror = function() {
+      alert('data.js を取得できませんでした。\n・GitHub に data.js があるか\n・通信を確認してください');
+    };
+    document.head.appendChild(s);
+  }
+
+  loadDataJsViaScript();
 })();
 
 // 緑矢印設定をグローバルスコープで先に定義
@@ -858,7 +838,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm13';
+var BUILD_STAMP = '2026-06-05-ipadm14';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -3216,11 +3196,11 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
     targetYaw = degToRad(parseFloat(initialYaw));
     initialYaw = null;
   } else if (targetYaw === undefined) {
-    targetYaw = obj.data.initialViewParameters?.yaw;
+    targetYaw = obj.data.initialViewParameters && obj.data.initialViewParameters.yaw;
   }
 
   if (targetPitch === undefined) {
-    targetPitch = obj.data.initialViewParameters?.pitch;
+    targetPitch = obj.data.initialViewParameters && obj.data.initialViewParameters.pitch;
   }
 
   var prevView = currentView;
@@ -4613,11 +4593,11 @@ function normalizeAngle(a) { while (a > Math.PI) a -= 2*Math.PI; while (a < -Mat
 
 // ★ directionベースの判定（汎用化）
 function isLeftSide(id) {
-  var scene = window.APP_DATA.scenes.find(s => s.id === id);
+  var scene = window.APP_DATA.scenes.find(function(s) { return s.id === id; });
   return scene && scene.direction === "left";
 }
 function isRightSide(id) {
-  var scene = window.APP_DATA.scenes.find(s => s.id === id);
+  var scene = window.APP_DATA.scenes.find(function(s) { return s.id === id; });
   return scene && scene.direction === "right";
 }
 
@@ -4634,7 +4614,7 @@ console.log('🔹 PORTAL_SCENES (動的構築):', PORTAL_SCENES);
 
 function isSideRoute(id) { 
   // ★ポータル専用シーンは脇道から除外
-  var scene = window.APP_DATA.scenes.find(s => s.id === id);
+  var scene = window.APP_DATA.scenes.find(function(s) { return s.id === id; });
   if (scene && scene.direction === "portal") return false;
   return isLeftSide(id) || isRightSide(id); 
 }
