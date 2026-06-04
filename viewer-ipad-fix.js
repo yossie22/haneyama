@@ -14,8 +14,20 @@
 
   if (!isIosSafari()) return;
 
+  function mayPlayGuide(entry) {
+    if (!entry || !entry.vid) return false;
+    var vid = entry.vid;
+    if (entry.guidePlaybackDone) return false;
+    if (vid.loop !== true && vid.ended) return false;
+    if (!vid.paused && vid.currentTime > 0.05) return false;
+    return true;
+  }
+
   function kick() {
-    document.querySelectorAll('#guideIosOverlayRoot video, video.scene-video-2d').forEach(function(vid) {
+    var list = window.sceneVideoEls || [];
+    list.forEach(function(entry) {
+      if (!mayPlayGuide(entry)) return;
+      var vid = entry.vid;
       vid.muted = true;
       vid.playsInline = true;
       vid.setAttribute('playsinline', '');
@@ -25,6 +37,5 @@
   }
 
   document.body.addEventListener('touchstart', kick, { passive: true });
-  setInterval(kick, 2000);
-  window.addEventListener('load', kick);
+  window.addEventListener('load', function() { setTimeout(kick, 400); });
 })();

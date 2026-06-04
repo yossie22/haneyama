@@ -815,7 +815,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm7';
+var BUILD_STAMP = '2026-06-05-ipadm8';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2357,10 +2357,17 @@ function setupGuideVideoPlayback(vid, vh, sceneId, entry) {
 
   vid.addEventListener('ended', function() {
     if (loop) return;
-    guideVideoSessionDone[sceneId] = true;
-    entry.guidePlaybackDone = true;
-    try { vid.pause(); } catch (e) {}
+    finishGuidePlayback(vid, sceneId, entry);
   }, { once: true });
+
+  if (!loop && guideDeviceIsIosSafari()) {
+    vid.addEventListener('timeupdate', function() {
+      if (entry.guidePlaybackDone || !vid.duration || vid.duration < 0.2) return;
+      if (vid.currentTime >= vid.duration - 0.12) {
+        finishGuidePlayback(vid, sceneId, entry);
+      }
+    });
+  }
 
   if (vh.autoplay) {
     vid.addEventListener('loadeddata', function() {
@@ -2535,6 +2542,23 @@ function startGuideCanvasMatteLoop(entry, threshold) {
   entry.guideCanvasRaf = requestAnimationFrame(frame);
 }
 
+function finishGuidePlayback(vid, sceneId, entry) {
+  if (!entry || entry.guideFinishLock) return;
+  entry.guideFinishLock = true;
+  guideVideoSessionDone[sceneId] = true;
+  entry.guidePlaybackDone = true;
+  stopGuideCanvasMatte(entry);
+  if (entry.guideImgRaf) {
+    cancelAnimationFrame(entry.guideImgRaf);
+    entry.guideImgRaf = 0;
+  }
+  try { vid.pause(); } catch (e) {}
+  seekGuideVideoToLastFrame(vid);
+  if (entry.guideCanvasCtx || entry.guideDisplayImg) {
+    paintGuideCanvasOnce(entry, 34);
+  }
+}
+
 function ensureGuideVideoPlays(entry) {
   if (!entry || !entry.vid) return;
   var vid = entry.vid;
@@ -2542,6 +2566,8 @@ function ensureGuideVideoPlays(entry) {
   vid.playsInline = true;
   vid.setAttribute('playsinline', '');
   function tryPlay() {
+    if (entry.guidePlaybackDone) return;
+    if (vid.loop !== true && vid.ended) return;
     var p = vid.play();
     if (p && p.catch) p.catch(function() {});
   }
@@ -2549,7 +2575,6 @@ function ensureGuideVideoPlays(entry) {
   vid.addEventListener('loadeddata', tryPlay);
   setTimeout(tryPlay, 200);
   setTimeout(tryPlay, 1000);
-  setTimeout(tryPlay, 2500);
 }
 
 function setupGuideIosLightenMatte(vid, maskWrap, vh, entry) {
@@ -2629,13 +2654,15 @@ function maybeIosGuideImgFallback(entry, vh) {
     try { img.src = c.toDataURL('image/png'); } catch (e3) {}
   }
   entry.vid.addEventListener('play', function() {
-    function loop() {
+    if (entry.guidePlaybackDone) return;
+    function imgFrame() {
+      if (entry.guidePlaybackDone) return;
       refreshImg();
       if (!entry.vid.paused && !entry.vid.ended) {
-        entry.guideImgRaf = requestAnimationFrame(loop);
+        entry.guideImgRaf = requestAnimationFrame(imgFrame);
       }
     }
-    loop();
+    imgFrame();
   });
   entry.vid.addEventListener('pause', refreshImg);
   entry.vid.addEventListener('seeked', refreshImg);
@@ -2686,8 +2713,14 @@ function scheduleGuideCanvasWarmup(entry, threshold) {
 function kickSceneGuideVideos() {
   (window.sceneVideoEls || []).forEach(function(entry) {
     if (!entry.vid) return;
+    if (entry.guidePlaybackDone) {
+      seekGuideVideoToLastFrame(entry.vid);
+      if (entry.guideCanvasCtx || entry.guideDisplayImg) paintGuideCanvasOnce(entry, 34);
+      return;
+    }
+    if (entry.vid.loop !== true && entry.vid.ended) return;
     ensureGuideVideoPlays(entry);
-    if (entry.guideCanvas) {
+    if (entry.guideCanvas && !entry.guidePlaybackDone) {
       paintGuideCanvasOnce(entry, 34);
       startGuideCanvasMatteLoop(entry, 34);
     }
@@ -4798,6 +4831,6 @@ switchScene(urlParams.get('id') || '0-aa001');
 
 }
 </script>
-<script src="viewer-ipad-fix.js?v=ipadm7"></script>
+<script src="viewer-ipad-fix.js?v=ipadm8"></script>
 </body>
 </html>
