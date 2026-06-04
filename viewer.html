@@ -472,7 +472,6 @@ body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 #viewerBuildBadge { display: none !important; }
 
 </style>
-<script src="data.js"></script>
 </head>
 
 <body>
@@ -535,8 +534,30 @@ var flipDir = urlParams.get('flip') === '1';
 // ★タイルフォルダ名（実フォルダに合わせて 'tiles'）
 window.TILES_BASE = "tiles1024";
 
-// data.js を fetch で読み込む（cache: 'no-store' でキャッシュを完全無効化）
+// data.js を fetch で読み込む（古い <script src="data.js"> キャッシュを避ける）
 (function loadDataAndBoot() {
+  function loadAppDataFromJsText(text) {
+    var fn = new Function(text + '\n;return typeof APP_DATA !== "undefined" ? APP_DATA : null;');
+    var appData = fn();
+    if (!appData) throw new Error('APP_DATA が未定義');
+    window.APP_DATA = appData;
+    return appData;
+  }
+
+  function logGuideHotspotFromData() {
+    try {
+      var sc = (window.APP_DATA && window.APP_DATA.scenes) || [];
+      for (var i = 0; i < sc.length; i++) {
+        if (sc[i] && sc[i].id === '25-cc003' && sc[i].videoHotspots && sc[i].videoHotspots[0]) {
+          var h = sc[i].videoHotspots[0];
+          console.log('🎬 data.js 25-cc003 guide: yaw=' + h.yaw + ' pitch=' + h.pitch +
+            ' w=' + h.width + ' h=' + h.height);
+          return;
+        }
+      }
+    } catch (eLog) {}
+  }
+
   function applyDataOverlayAndStart() {
     // 任意: data_overlay.json があれば APP_DATA にマージ（作品固有のポータル/テキストを data.js と分離できる）
     fetch('data_overlay.json', { cache: 'no-store' })
@@ -567,27 +588,33 @@ window.TILES_BASE = "tiles1024";
       });
   }
 
-  fetch('data.js', { cache: 'no-store' })
+  var dataCacheBust = urlParams.get('_cv') || urlParams.get('_dv') || String(Date.now());
+  fetch('data.js?_=' + encodeURIComponent(dataCacheBust), { cache: 'no-store' })
     .then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.text();
     })
     .then(function(text) {
-      // data.js を実行して window.APP_DATA を定義
-      // eslint-disable-next-line no-new-func
-      (new Function(text))();
-      if (!window.APP_DATA) throw new Error('APP_DATA が未定義');
+      loadAppDataFromJsText(text);
+      logGuideHotspotFromData();
       console.log('✅ data.js をキャッシュなしで読み込みました (fetch)');
       applyDataOverlayAndStart();
     })
     .catch(function(err) {
-      // フォールバック：file://環境など fetch が使えない場合は script タグで読み込む
       console.warn('⚠ fetch失敗、script タグで再試行:', err);
       var s = document.createElement('script');
-      s.src = 'data.js?v=' + Date.now();
+      s.src = 'data.js?_=' + Date.now();
       s.onload = function() {
+        if (!window.APP_DATA) {
+          alert('data.js の読み込みに失敗しました。ネットワークを確認してください。');
+          return;
+        }
+        logGuideHotspotFromData();
         console.log('✅ data.js を script タグで読み込みました');
         applyDataOverlayAndStart();
+      };
+      s.onerror = function() {
+        alert('data.js を読み込めませんでした。');
       };
       document.head.appendChild(s);
     });
@@ -831,7 +858,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm12';
+var BUILD_STAMP = '2026-06-05-ipadm13';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
