@@ -815,7 +815,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm10';
+var BUILD_STAMP = '2026-06-05-ipadm11';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2114,16 +2114,13 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
     sceneId: sceneId,
     guidePlaybackDone: false
   };
+  entry.iosUseNativeVideo = true;
   setupGuideIosLightenMatte(vid, maskWrap, vh, entry);
   setupGuideVideoPlayback(vid, vh, sceneId, entry);
   window.sceneVideoEls.push(entry);
   bindGuideIosOverlayTracking();
   updateAllGuideIosOverlays();
-  console.log('🎬 iPad: 画面固定オーバーレイ');
-  vid.addEventListener('loadeddata', function() {
-    setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 400);
-    setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 1500);
-  });
+  console.log('🎬 iPad: 画面固定オーバーレイ（動画をそのまま再生）');
   vid.addEventListener('error', function onIosVidErr() {
     console.warn('🎬 iPad 動画失敗、別形式を試します:', vid.src, vid.error);
     var webm = videoHotspotSrcUrl(vh.src);
@@ -2595,16 +2592,17 @@ function setupGuideIosLightenMatte(vid, maskWrap, vh, entry) {
   applyVideoHotspotObjectFit(vid, vh);
   applyVideoHotspotTone(vid, vh.tone);
   ensureGuideVideoPlays(entry);
-  console.log('🎬 iPad: lighten 表示');
-  entry.vid.addEventListener('loadeddata', function() {
-    maybeIosGuideImgFallback(entry, vh);
-    setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 900);
-  });
-  setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 2800);
+  if (!entry.iosScreenOverlay && !entry.iosUseNativeVideo) {
+    entry.vid.addEventListener('loadeddata', function() {
+      maybeIosGuideImgFallback(entry, vh);
+    }, { once: true });
+    setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 2800);
+  }
   return true;
 }
 
 function maybeIosGuideImgFallback(entry, vh) {
+  if (entry && (entry.iosScreenOverlay || entry.iosUseNativeVideo)) return;
   if (!entry || !entry.vid || entry.guideImgFallbackDone) return;
   if (entry.vid.readyState < 2 || !entry.vid.videoWidth) {
     ensureGuideVideoPlays(entry);
@@ -2829,6 +2827,24 @@ function getVideoHotspotsForScene(sceneId, sceneData) {
   return sceneData && sceneData.videoHotspots ? sceneData.videoHotspots : [];
 }
 
+function updateIosScreenOverlayFromHotspot(entry, vh) {
+  if (!entry || !entry.iosScreenOverlay || !vh) return;
+  entry.placeYaw = vh.yaw !== undefined ? degToRad(parseFloat(vh.yaw)) : entry.placeYaw;
+  entry.placePitch = vh.pitch !== undefined ? degToRad(parseFloat(vh.pitch)) : entry.placePitch;
+  entry.overlayW = Math.max(200, parseInt(vh.width, 10) || entry.overlayW || 280);
+  entry.overlayH = Math.max(260, parseInt(vh.height, 10) || entry.overlayH || 380);
+  if (entry.wrap) {
+    entry.wrap.style.width = entry.overlayW + 'px';
+    entry.wrap.style.height = entry.overlayH + 'px';
+  }
+  if (entry.vid && entry.maskWrap) {
+    applyVideoHotspotObjectFit(entry.vid, vh);
+    applyVideoHotspotTone(entry.vid, vh.tone);
+    applyVideoHotspotTone(entry.wrap, vh.tone);
+  }
+  updateAllGuideIosOverlays();
+}
+
 function tryApplyPlacerPreviewHotspot() {
   if (!embedPlacerMode) return;
   if (!currentSceneObj || !currentScene) return;
@@ -2837,6 +2853,16 @@ function tryApplyPlacerPreviewHotspot() {
   placerPreviewHotspot = hotspot;
   placerPreviewPending = null;
   var key = placerPreviewHotspotKey(hotspot);
+  var iosEntry = null;
+  (window.sceneVideoEls || []).some(function(e) {
+    if (e && e.iosScreenOverlay) { iosEntry = e; return true; }
+    return false;
+  });
+  if (iosEntry) {
+    placerPreviewLastKey = key;
+    updateIosScreenOverlayFromHotspot(iosEntry, hotspot);
+    return;
+  }
   if (window.sceneVideoHotspotHandles && window.sceneVideoHotspotHandles.length) {
     placerPreviewHotspot = hotspot;
     placerPreviewPending = null;
@@ -2974,7 +3000,7 @@ function attachVideoHotspots(sceneId, sceneData) {
     bindVideo2DTap(wrap, vid, vh);
     var placeYaw = vh.yaw !== undefined ? degToRad(parseFloat(vh.yaw)) : 0;
     var placePitch = vh.pitch !== undefined ? degToRad(parseFloat(vh.pitch)) : 0;
-    if (guideDeviceIsIosSafari() && !embedPlacerMode) {
+    if (guideDeviceIsIosSafari()) {
       attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch);
       return;
     }
