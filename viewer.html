@@ -876,7 +876,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm24';
+var BUILD_STAMP = '2026-06-05-ipadm25';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2171,6 +2171,10 @@ function updateAllGuideIosOverlays() {
     el.style.height = drawH + 'px';
     entry.overlayDrawW = drawW;
     entry.overlayDrawH = drawH;
+    if (entry.guideCanvasCtx) {
+      paintGuideCanvasOnce(entry, 16);
+      applyIosOverlayClipFromCanvas(entry);
+    }
   });
 }
 
@@ -2224,7 +2228,7 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
     console.log('🎬 iPad: CSS lighten（?iosLighten=1）');
   } else {
     setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry);
-    console.log('🎬 iPad: canvas+lighter ' + (entry.iosMatteDrawMode || ''));
+    console.log('🎬 iPad: 画面固定 Canvas ' + (entry.iosMatteDrawMode || ''));
   }
   setupGuideVideoPlayback(vid, vh, sceneId, entry);
   window.sceneVideoEls.push(entry);
@@ -2842,17 +2846,26 @@ function setupGuideIosScreenLightenMatte(vid, maskWrap, vh, entry) {
   return true;
 }
 
-function guideIosScreenMatteDrawMode(vh) {
+function guideIosMatteDrawMode(vh) {
+  try {
+    if (new URLSearchParams(window.location.search).get('iosLighten') === '1') return 'lighter';
+  } catch (e0) {}
   if (guideIosScreenPreferCanvasMatte(vh)) return 'key';
-  return 'lighter';
+  return 'distance';
 }
 
-function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
+/** iPad 共通: 動画は隠し、Canvas で黒抜き（lighten は iPad で黒枠になるため使わない） */
+function setupGuideIosCanvasMatte(vid, maskWrap, vh, entry) {
   if (!vid || !maskWrap || !entry) return false;
   entry.iosUseNativeVideo = false;
-  entry.iosMatteDrawMode = guideIosScreenMatteDrawMode(vh);
-  entry.wrap.classList.remove('guide-ios-visible', 'guide-img-matte', 'guide-ios-canvas-matte', 'guide-ios-canvas-lighter');
-  entry.wrap.classList.add(entry.iosMatteDrawMode === 'lighter' ? 'guide-ios-canvas-lighter' : 'guide-ios-canvas-matte');
+  entry.iosMatteDrawMode = guideIosMatteDrawMode(vh);
+  entry.iosScreenCanvasKey = true;
+  entry.iosMatteScale = 2;
+  entry.iosBlackKeySoft = 0;
+  entry.wrap.classList.remove('guide-ios-visible', 'guide-img-matte', 'guide-ios-canvas-matte', 'guide-ios-canvas-lighter', 'guide-ios-screen-lighten');
+  entry.wrap.classList.add(
+    entry.iosMatteDrawMode === 'lighter' ? 'guide-ios-canvas-lighter' : 'guide-ios-canvas-matte'
+  );
   maskWrap.classList.remove('guide-matte-lighten', 'guide-img-matte');
   maskWrap.style.background = 'transparent';
   var oldC = maskWrap.querySelector('canvas.guide-video-canvas');
@@ -2863,27 +2876,36 @@ function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
   vid.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;pointer-events:none';
   entry.guideCanvas = canvas;
   entry.guideCanvasCtx = canvas.getContext('2d', { willReadFrequently: true });
-  applyVideoHotspotObjectFitIosScreen(vid);
+  if (entry.iosScreenOverlay) {
+    applyVideoHotspotObjectFitIosScreen(vid);
+  } else {
+    applyVideoHotspotObjectFit(vid, vh);
+  }
   applyVideoHotspotToneForIosGuideCanvas(canvas, vh.tone);
   var thr = vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 16;
-  entry.iosBlackKeySoft = 0;
-  entry.iosScreenCanvasKey = true;
-  entry.iosMatteScale = 2;
   function paint() { paintGuideCanvasOnce(entry, thr); }
   vid.addEventListener('loadeddata', paint);
   vid.addEventListener('seeked', paint);
-  vid.addEventListener('play', function() { startGuideIosScreenCanvasPaint(entry, thr); });
+  vid.addEventListener('play', function() {
+    if (entry.iosScreenOverlay) startGuideIosScreenCanvasPaint(entry, thr);
+    else startGuideCanvasMatteLoop(entry, thr);
+  });
   vid.addEventListener('pause', function() {
-    stopGuideIosScreenCanvasPaint(entry);
+    stopGuideCanvasMatte(entry);
     paint();
   });
   vid.addEventListener('ended', function() {
-    stopGuideIosScreenCanvasPaint(entry);
+    stopGuideCanvasMatte(entry);
     paint();
   });
   setTimeout(paint, 300);
   setTimeout(paint, 1200);
+  console.log('🎬 iPad: Canvas黒抜き mode=' + entry.iosMatteDrawMode);
   return true;
+}
+
+function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
+  return setupGuideIosCanvasMatte(vid, maskWrap, vh, entry);
 }
 
 /** iPad: Canvas 2D の lighter で黒背景を消す（PC の mix-blend-mode: lighten 相当・髪の穴抜き不要） */
@@ -2904,7 +2926,76 @@ function drawGuideCanvasLighterMatte(ctx, vid, cw, ch) {
   trimGuideCanvasLighterBlackFringe(ctx, cw, ch);
 }
 
-/** lighter 後に残るごく細い黒フチだけ除去 */
+/** iPad: 黒からの距離でアルファ（レターボックスの黒を確実に透明に） */
+function guideCanvasKeyAlphaDistance(r, g, b) {
+  var dist = Math.sqrt(r * r + g * g + b * b);
+  if (dist <= 18) return 0;
+  if (dist >= 54) return 255;
+  return Math.min(255, Math.round(((dist - 18) / 36) * 255));
+}
+
+function drawGuideCanvasDistanceMatte(ctx, vid, cw, ch) {
+  var vw = vid.videoWidth;
+  var vh = vid.videoHeight;
+  if (!vw || !vh || !ctx || cw < 1 || ch < 1) return;
+  ctx.clearRect(0, 0, cw, ch);
+  var rect = guideVideoDrawRect(vw, vh, cw, ch, true);
+  ctx.drawImage(vid, 0, 0, vw, vh, rect.dx, rect.dy, rect.dw, rect.dh);
+  var img = ctx.getImageData(0, 0, cw, ch);
+  var d = img.data;
+  var i;
+  for (i = 0; i < d.length; i += 4) {
+    d[i + 3] = guideCanvasKeyAlphaDistance(d[i], d[i + 1], d[i + 2]);
+  }
+  polishGuideCanvasIosMatte(d, cw, ch);
+  ctx.putImageData(img, 0, 0);
+}
+
+/** 透明部分で枠を切り、黒い長方形の箱を見せない */
+function applyIosOverlayClipFromCanvas(entry) {
+  if (!entry || !entry.iosOverlayEl || !entry.guideCanvas || !entry.guideCanvasCtx) return;
+  var cw = entry.guideCanvas.width;
+  var ch = entry.guideCanvas.height;
+  if (cw < 4 || ch < 4) return;
+  var data;
+  try { data = entry.guideCanvasCtx.getImageData(0, 0, cw, ch).data; } catch (e) { return; }
+  var minX = cw;
+  var minY = ch;
+  var maxX = 0;
+  var maxY = 0;
+  var x;
+  var y;
+  for (y = 0; y < ch; y++) {
+    for (x = 0; x < cw; x++) {
+      if (data[(y * cw + x) * 4 + 3] > 42) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX <= minX || maxY <= minY) {
+    entry.iosOverlayEl.style.clipPath = '';
+    return;
+  }
+  var pad = 1;
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(cw - 1, maxX + pad);
+  maxY = Math.min(ch - 1, maxY + pad);
+  var drawW = entry.overlayDrawW || parseInt(entry.iosOverlayEl.style.width, 10) || cw;
+  var drawH = entry.overlayDrawH || parseInt(entry.iosOverlayEl.style.height, 10) || ch;
+  var sx = drawW / cw;
+  var sy = drawH / ch;
+  var top = Math.round(minY * sy);
+  var left = Math.round(minX * sx);
+  var bottom = Math.round((ch - 1 - maxY) * sy);
+  var right = Math.round((cw - 1 - maxX) * sx);
+  entry.iosOverlayEl.style.clipPath =
+    'inset(' + top + 'px ' + right + 'px ' + bottom + 'px ' + left + 'px)';
+}
+
 function trimGuideCanvasLighterBlackFringe(ctx, cw, ch) {
   var img;
   try { img = ctx.getImageData(0, 0, cw, ch); } catch (e) { return; }
@@ -2974,6 +3065,10 @@ function paintGuideCanvasOnce(entry, threshold) {
   var ch = entry.guideCanvas.height;
   if (entry.iosMatteDrawMode === 'lighter') {
     drawGuideCanvasLighterMatte(entry.guideCanvasCtx, entry.vid, cw, ch);
+    return;
+  }
+  if (entry.iosMatteDrawMode === 'distance') {
+    drawGuideCanvasDistanceMatte(entry.guideCanvasCtx, entry.vid, cw, ch);
     return;
   }
   drawGuideCanvasBlackKey(
@@ -3199,6 +3294,7 @@ function bindIOSGuideVideoKick() {
 
 function applyGuideVideoMatte(vid, maskWrap, vh, entry) {
   if (!vid || !maskWrap) return;
+  if (guideDeviceIsIosSafari() && entry && setupGuideIosCanvasMatte(vid, maskWrap, vh, entry)) return;
   if (entry && setupGuideIosLightenMatte(vid, maskWrap, vh, entry)) return;
   if (entry && setupGuideCanvasBlackKey(vid, maskWrap, vh, entry)) return;
   maskWrap.classList.add('guide-matte-lighten');
@@ -3253,9 +3349,9 @@ function guideVideoDrawRect(vw, vh, cw, ch, useCover) {
 
 function guideIosUseScreenOverlay() {
   try {
-    return new URLSearchParams(window.location.search).get('iosScreen') === '1';
+    if (new URLSearchParams(window.location.search).get('ios3d') === '1') return false;
   } catch (e0) {}
-  return false;
+  return true;
 }
 
 function hotspotDefringe(vh) {
