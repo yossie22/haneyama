@@ -1077,6 +1077,10 @@ var APP_DATA = {
             "contrast": 1.12,
             "saturate": 0.88
           },
+          "blackKeyThreshold": 22,
+          "blackKeySoft": 42,
+          "iosAnchorY": 0.52,
+          "iosOverlayOffsetY": 10,
           "autoplay": true,
           "loop": false,
           "fadeInMs": 0,
