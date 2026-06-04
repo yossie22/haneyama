@@ -858,7 +858,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm15';
+var BUILD_STAMP = '2026-06-05-ipadm16';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2100,7 +2100,8 @@ function updateAllGuideIosOverlays() {
     }
     var w = entry.overlayW || 280;
     var h = entry.overlayH || 380;
-    var maxW = Math.min(w, Math.round(window.innerWidth * 0.42));
+    var pct = entry.iosMaxWidthPct != null ? entry.iosMaxWidthPct : 0.72;
+    var maxW = Math.min(w, Math.round(panoW * pct));
     var scale = maxW / w;
     var drawW = Math.round(w * scale);
     var drawH = Math.round(h * scale);
@@ -2639,6 +2640,7 @@ function applyGuideBlackKeyToEntry(entry, vh) {
   entry.blackKeySoft = bk.soft;
   entry.iosAnchorY = vh && vh.iosAnchorY != null ? parseFloat(vh.iosAnchorY) : 0.52;
   entry.iosOverlayOffsetY = vh && vh.iosOverlayOffsetY != null ? parseInt(vh.iosOverlayOffsetY, 10) : 0;
+  entry.iosMaxWidthPct = vh && vh.iosMaxWidthPct != null ? parseFloat(vh.iosMaxWidthPct) : 0.72;
 }
 
 function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold, softWidth) {

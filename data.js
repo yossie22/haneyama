@@ -1081,6 +1081,7 @@ var APP_DATA = {
           "blackKeySoft": 26,
           "iosAnchorY": 0.52,
           "iosOverlayOffsetY": 10,
+          "iosMaxWidthPct": 0.75,
           "autoplay": true,
           "loop": false,
           "fadeInMs": 0,
