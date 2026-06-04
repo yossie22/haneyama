@@ -858,7 +858,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm16';
+var BUILD_STAMP = '2026-06-05-ipadm17';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2628,8 +2628,8 @@ function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
 
 function guideBlackKeyParams(vh) {
   return {
-    thr: vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 18,
-    soft: vh && vh.blackKeySoft != null ? parseInt(vh.blackKeySoft, 10) : 26
+    thr: vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 16,
+    soft: vh && vh.blackKeySoft != null ? parseInt(vh.blackKeySoft, 10) : 20
   };
 }
 
@@ -2656,10 +2656,9 @@ function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold, softWidth) {
   ctx.drawImage(vid, 0, 0, vw, vh, dx, dy, dw, dh);
   var img = ctx.getImageData(0, 0, cw, ch);
   var d = img.data;
-  var thr = threshold != null ? threshold : 18;
-  var soft = softWidth != null ? softWidth : 26;
-  var solidAt = thr + Math.max(10, Math.round(soft * 0.55));
-  var i, r, g, b, lum, mx, a, t, fa, lift;
+  var thr = threshold != null ? threshold : 16;
+  var soft = Math.max(12, softWidth != null ? softWidth : 20);
+  var i, r, g, b, lum, mx, a, t;
   for (i = 0; i < d.length; i += 4) {
     r = d[i];
     g = d[i + 1];
@@ -2672,40 +2671,39 @@ function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold, softWidth) {
       d[i + 3] = 0;
       continue;
     }
-    if (lum >= solidAt || mx >= thr + 22) {
+    if (lum >= thr + 2 || mx >= thr + 5) {
       d[i + 3] = 255;
-      continue;
-    }
-    if (lum <= thr) {
-      d[i + 3] = 0;
       continue;
     }
     t = (lum - thr) / soft;
     if (t < 0) t = 0;
     if (t > 1) t = 1;
     t = t * t * t;
-    a = Math.round(t * 255);
-    if (mx >= thr + 14) a = Math.max(a, 220);
-    d[i + 3] = a;
-    if (a > 0 && a < 255) {
-      fa = a / 255;
-      if (fa > 0.04) {
-        r = Math.min(255, Math.round(r / fa));
-        g = Math.min(255, Math.round(g / fa));
-        b = Math.min(255, Math.round(b / fa));
+    d[i + 3] = Math.round(t * 255);
+  }
+  for (i = 0; i < d.length; i += 4) {
+    r = d[i];
+    g = d[i + 1];
+    b = d[i + 2];
+    a = d[i + 3];
+    if (a === 0) continue;
+    mx = r;
+    if (g > mx) mx = g;
+    if (b > mx) mx = b;
+    lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (mx < 78 && lum < 72) {
+      if (a < 200) {
+        d[i + 3] = 0;
+        continue;
       }
-      lift = 1 - t;
-      r = Math.min(255, Math.round(r + lift * 28));
-      g = Math.min(255, Math.round(g + lift * 28));
-      b = Math.min(255, Math.round(b + lift * 28));
-      d[i] = r;
-      d[i + 1] = g;
-      d[i + 2] = b;
-    } else if (a === 255 && mx < 95) {
-      lift = (95 - mx) / 95;
-      d[i] = Math.min(255, Math.round(r + lift * 22));
-      d[i + 1] = Math.min(255, Math.round(g + lift * 22));
-      d[i + 2] = Math.min(255, Math.round(b + lift * 22));
+      d[i] = Math.min(255, Math.round(r * 1.4 + 22));
+      d[i + 1] = Math.min(255, Math.round(g * 1.4 + 22));
+      d[i + 2] = Math.min(255, Math.round(b * 1.4 + 22));
+      d[i + 3] = 255;
+      continue;
+    }
+    if (a < 252 && lum >= thr + 3 && lum <= 140) {
+      d[i + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
