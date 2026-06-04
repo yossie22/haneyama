@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>VR Tour</title>
+<title>万年山VR【更新ipadm4】</title>
 <meta name="viewport" content="target-densitydpi=device-dpi, width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, minimal-ui" />
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
@@ -407,15 +407,20 @@ body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 
 #viewerBuildBadge {
   position: fixed;
-  right: 6px;
-  bottom: 6px;
-  z-index: 9999;
-  font: 10px/1.2 sans-serif;
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(0, 0, 0, 0.45);
-  padding: 3px 6px;
-  border-radius: 4px;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 99999;
+  font: bold 14px/1.35 "Meiryo", sans-serif;
+  color: #fff;
+  background: #c62828;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 2px solid #ffe26a;
   pointer-events: none;
+  max-width: 94vw;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
 </style>
@@ -423,7 +428,7 @@ body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 </head>
 
 <body>
-<div id="viewerBuildBadge" aria-hidden="true"></div>
+<div id="viewerBuildBadge" style="position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483647;background:#c62828;color:#fff;font:bold 14px Meiryo,sans-serif;padding:8px 14px;border:2px solid #ffe26a;border-radius:8px;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.6)">更新版 2026-06-05-ipadm4</div>
 <div id="pano"></div>
 <div id="sceneText"></div>
 <div id="fadeOverlay"></div>
@@ -779,17 +784,18 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm2';
+var BUILD_STAMP = '2026-06-05-ipadm4';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
 (function showViewerBuildBadge() {
   var el = document.getElementById('viewerBuildBadge');
-  if (el) el.textContent = 'v ' + BUILD_STAMP;
+  if (el) el.textContent = '更新版 ' + BUILD_STAMP;
 })();
 
 var panoElement = document.querySelector('#pano');
 var viewer = new Marzipano.Viewer(panoElement);
+bindIOSGuideVideoKick();
 
 // ★画面タッチで自動再生停止（黄色矢印と同じ方式）
 panoElement.addEventListener('mousedown', function() {
@@ -2084,15 +2090,19 @@ function appendGuideVideoSources(vid, vh) {
   if (!vid || !vh || !vh.src) return;
   while (vid.firstChild) vid.removeChild(vid.firstChild);
   vid.removeAttribute('src');
-  var hevc = guideVideoHevcSrc(vh.src, vh);
-  if (hevc) {
-    var sHevc = document.createElement('source');
-    sHevc.src = videoHotspotSrcUrl(hevc);
-    sHevc.type = 'video/mp4; codecs="hvc1"';
-    vid.appendChild(sHevc);
+  var webmUrl = videoHotspotSrcUrl(vh.src);
+  /* iPad/Safari: 無い HEVC を先に読むと WebM に落ちないことがあるため WebM のみ */
+  if (!guideDeviceNeedsCanvasMatte()) {
+    var hevc = guideVideoHevcSrc(vh.src, vh);
+    if (hevc) {
+      var sHevc = document.createElement('source');
+      sHevc.src = videoHotspotSrcUrl(hevc);
+      sHevc.type = 'video/mp4; codecs="hvc1"';
+      vid.appendChild(sHevc);
+    }
   }
   var sWebm = document.createElement('source');
-  sWebm.src = videoHotspotSrcUrl(vh.src);
+  sWebm.src = webmUrl;
   if (/\.webm$/i.test(vh.src)) sWebm.type = 'video/webm; codecs="vp9"';
   else if (/\.(mp4|m4v)$/i.test(vh.src)) sWebm.type = 'video/mp4';
   else sWebm.type = 'video/webm';
@@ -2253,12 +2263,20 @@ function isAppleMobileOrTablet() {
   return false;
 }
 
-function guidePreferCanvasBlackKey(vh) {
-  if (vh && vh.canvasBlackKey === false) return false;
+function guideDeviceNeedsCanvasMatte() {
   try {
     if (new URLSearchParams(window.location.search).get('canvasMatte') === '1') return true;
-  } catch (e2) {}
-  return isAppleMobileOrTablet();
+  } catch (e0) {}
+  if (isAppleMobileOrTablet()) return true;
+  var ua = navigator.userAgent || '';
+  if (/CriOS|FxiOS|EdgiOS/i.test(ua)) return true;
+  if (/Safari/i.test(ua) && !/Chrome|Chromium|Edg\//i.test(ua)) return true;
+  return false;
+}
+
+function guidePreferCanvasBlackKey(vh) {
+  if (vh && vh.canvasBlackKey === false) return false;
+  return guideDeviceNeedsCanvasMatte();
 }
 
 function stopGuideCanvasMatte(entry) {
@@ -2355,7 +2373,40 @@ function setupGuideCanvasBlackKey(vid, maskWrap, vh, entry) {
     onPaint();
   });
   console.log('🎬 iPad向け: Canvas黒抜きで guide を表示（追加の mov 不要）');
+  var badge = document.getElementById('viewerBuildBadge');
+  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（iPad・Safari表示）';
+  scheduleGuideCanvasWarmup(entry, thr);
   return true;
+}
+
+function scheduleGuideCanvasWarmup(entry, threshold) {
+  if (!entry || !entry.guideCanvas) return;
+  var n = 0;
+  var timer = setInterval(function() {
+    paintGuideCanvasOnce(entry, threshold);
+    n += 1;
+    if (n >= 24) clearInterval(timer);
+  }, 250);
+}
+
+function kickSceneGuideVideos() {
+  (window.sceneVideoEls || []).forEach(function(entry) {
+    if (!entry.guideCanvas || !entry.vid) return;
+    var thr = 34;
+    entry.vid.muted = true;
+    var p = entry.vid.play();
+    if (p && p.catch) p.catch(function() {});
+    paintGuideCanvasOnce(entry, thr);
+    startGuideCanvasMatteLoop(entry, thr);
+  });
+}
+
+function bindIOSGuideVideoKick() {
+  if (!guideDeviceNeedsCanvasMatte() || window._iosGuideKickBound) return;
+  window._iosGuideKickBound = true;
+  panoElement.addEventListener('touchstart', function() {
+    kickSceneGuideVideos();
+  }, { passive: true });
 }
 
 function applyGuideVideoMatte(vid, maskWrap, vh, entry) {
@@ -4449,5 +4500,6 @@ switchScene(urlParams.get('id') || '0-aa001');
 
 }
 </script>
+<script src="viewer-ipad-fix.js?v=ipadm4"></script>
 </body>
 </html>
