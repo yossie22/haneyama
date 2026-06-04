@@ -815,7 +815,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm9';
+var BUILD_STAMP = '2026-06-05-ipadm10';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2040,9 +2040,14 @@ function guideCoordsToScreenApprox(yaw, pitch) {
 
 function updateAllGuideIosOverlays() {
   if (!guideDeviceIsIosSafari()) return;
+  var curId = currentSceneObj && currentSceneObj.data ? currentSceneObj.data.id : null;
   var panoRect = panoElement.getBoundingClientRect();
   (window.sceneVideoEls || []).forEach(function(entry) {
     if (!entry.iosScreenOverlay || !entry.iosOverlayEl) return;
+    if (!curId || entry.sceneId !== curId) {
+      entry.iosOverlayEl.style.display = 'none';
+      return;
+    }
     var scr = guideCoordsToScreenApprox(entry.placeYaw, entry.placePitch);
     var el = entry.iosOverlayEl;
     var panoW = panoRect.width || panoElement.clientWidth || window.innerWidth;
@@ -3038,6 +3043,12 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
   console.log('🔵 switchScene: sceneId=' + sceneId + ', yaw=' + (yaw !== undefined ? radToDeg(yaw).toFixed(2) + '°' : 'undefined') + ', pitch=' + (pitch !== undefined ? radToDeg(pitch).toFixed(2) + '°' : 'undefined'));
 
   var prevId = currentSceneObj ? currentSceneObj.data.id : null;
+  var hadIosGuide = (window.sceneVideoEls || []).some(function(e) {
+    return e && e.iosScreenOverlay;
+  });
+  if (guideDeviceIsIosSafari() && (hadIosGuide || (prevId && sceneHasVideoHotspots(prevId, currentSceneObj.data)))) {
+    destroyGuideIosOverlayRoot();
+  }
   var oldVideoHandles = [];
   if (prevId && sceneHasVideoHotspots(prevId, currentSceneObj.data)) {
     oldVideoHandles = (window.sceneVideoHotspotHandles || []).slice();
