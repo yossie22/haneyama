@@ -486,6 +486,19 @@ body.embed-placer #videoFullscreenOverlay { display: none !important; }
 body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 
 #viewerBuildBadge { display: none !important; }
+#viewerBuildBadge.guide-ios-build-on {
+  display: block !important;
+  position: fixed;
+  left: 6px;
+  bottom: 6px;
+  z-index: 9999;
+  font: 10px/1.3 sans-serif;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 3px 7px;
+  border-radius: 4px;
+  pointer-events: none;
+}
 
 </style>
 </head>
@@ -854,10 +867,23 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm20';
+var BUILD_STAMP = '2026-06-05-ipadm21';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
+
+function showViewerBuildBadgeIfIos() {
+  if (!guideDeviceIsIosSafari()) return;
+  var el = document.getElementById('viewerBuildBadge');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'viewerBuildBadge';
+    document.body.appendChild(el);
+  }
+  el.textContent = BUILD_STAMP;
+  el.className = 'guide-ios-build-on';
+}
+showViewerBuildBadgeIfIos();
 
 var panoElement = document.querySelector('#pano');
 var viewer = new Marzipano.Viewer(panoElement);
