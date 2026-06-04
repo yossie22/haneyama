@@ -838,7 +838,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm15';
+var BUILD_STAMP = '2026-06-05-ipadm16';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2495,6 +2495,36 @@ function applyVideoHotspotTone(el, tone) {
   el.style.filter = 'brightness(' + br + ') contrast(' + ct + ') saturate(' + sat + ')';
 }
 
+/** iPad キャンバス黒抜き用: PC 向けの暗めトーンで髪が白っぽくならないよう補正 */
+function applyVideoHotspotToneForIosGuideCanvas(el, tone) {
+  if (!el) return;
+  var t = tone || {};
+  var br = t.brightness != null ? t.brightness : 1.02;
+  var ct = t.contrast != null ? t.contrast : 1.04;
+  var sat = t.saturate != null ? t.saturate : 1.06;
+  if (br < 1) br = 1.0 + (1 - br) * 0.12;
+  if (sat < 1) sat = sat + 0.14;
+  br = Math.min(1.12, Math.max(1.0, br));
+  sat = Math.min(1.2, Math.max(1.02, sat));
+  el.style.filter = 'brightness(' + br.toFixed(3) + ') contrast(' + ct + ') saturate(' + sat.toFixed(3) + ')';
+}
+
+/** 黒背景だけ透過（暗い髪・服は残す。max(RGB) だけだと髪が半透明で白髪に見える） */
+function guideCanvasKeyAlpha(r, g, b, thr, soft) {
+  if (r <= thr && g <= thr && b <= thr) return 0;
+  var mx = r;
+  if (g > mx) mx = g;
+  if (b > mx) mx = b;
+  var mn = r;
+  if (g < mn) mn = g;
+  if (b < mn) mn = b;
+  var sat = mx - mn;
+  if (mx <= thr + soft && sat <= 26) {
+    return Math.min(255, Math.round(((mx - thr) / Math.max(1, soft)) * 255));
+  }
+  return 255;
+}
+
 function isAppleMobileOrTablet() {
   var ua = navigator.userAgent || '';
   if (/iPad|iPhone|iPod/i.test(ua)) return true;
@@ -2586,8 +2616,9 @@ function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
   entry.guideCanvas = canvas;
   entry.guideCanvasCtx = canvas.getContext('2d', { willReadFrequently: true });
   applyVideoHotspotObjectFit(vid, vh);
-  applyVideoHotspotTone(canvas, vh.tone);
-  var thr = vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 34;
+  applyVideoHotspotToneForIosGuideCanvas(canvas, vh.tone);
+  var thr = vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 24;
+  entry.iosBlackKeySoft = 18;
   function paint() { paintGuideCanvasOnce(entry, thr); }
   vid.addEventListener('loadeddata', paint);
   vid.addEventListener('seeked', paint);
@@ -2605,7 +2636,7 @@ function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
   return true;
 }
 
-function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold) {
+function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold, softEdge, entry) {
   var vw = vid.videoWidth;
   var vh = vid.videoHeight;
   if (!vw || !vh || !ctx || cw < 1 || ch < 1) return;
@@ -2618,17 +2649,14 @@ function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold) {
   ctx.drawImage(vid, 0, 0, vw, vh, dx, dy, dw, dh);
   var img = ctx.getImageData(0, 0, cw, ch);
   var d = img.data;
-  var thr = threshold != null ? threshold : 34;
-  var soft = 55;
+  var thr = threshold != null ? threshold : 24;
+  var soft = softEdge != null ? softEdge : (entry && entry.iosBlackKeySoft != null ? entry.iosBlackKeySoft : 18);
+  if (entry && entry.iosScreenOverlay) {
+    thr = threshold != null ? threshold : 24;
+    soft = entry.iosBlackKeySoft != null ? entry.iosBlackKeySoft : 18;
+  }
   for (var i = 0; i < d.length; i += 4) {
-    var mx = d[i];
-    if (d[i + 1] > mx) mx = d[i + 1];
-    if (d[i + 2] > mx) mx = d[i + 2];
-    if (mx <= thr) {
-      d[i + 3] = 0;
-    } else if (mx <= thr + soft) {
-      d[i + 3] = Math.min(255, (mx - thr) * 4);
-    }
+    d[i + 3] = guideCanvasKeyAlpha(d[i], d[i + 1], d[i + 2], thr, soft);
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -2649,7 +2677,9 @@ function paintGuideCanvasOnce(entry, threshold) {
     entry.vid,
     entry.guideCanvas.width,
     entry.guideCanvas.height,
-    threshold
+    threshold,
+    entry.iosBlackKeySoft,
+    entry
   );
 }
 
@@ -2964,7 +2994,7 @@ function updateIosScreenOverlayFromHotspot(entry, vh) {
   }
   if (entry.vid && entry.maskWrap) {
     applyVideoHotspotObjectFit(entry.vid, vh);
-    if (entry.guideCanvas) applyVideoHotspotTone(entry.guideCanvas, vh.tone);
+    if (entry.guideCanvas) applyVideoHotspotToneForIosGuideCanvas(entry.guideCanvas, vh.tone);
   }
   updateAllGuideIosOverlays();
   paintGuideCanvasOnce(entry, 34);
