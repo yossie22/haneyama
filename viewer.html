@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <title>VR Tour</title>
 <meta name="viewport" content="target-densitydpi=device-dpi, width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, minimal-ui" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <link rel="icon" href="vr-icon.ico" type="image/x-icon">
 
 <style>
@@ -402,11 +405,25 @@ body.embed-placer #sceneText { display: none !important; }
 body.embed-placer #videoFullscreenOverlay { display: none !important; }
 body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 
+#viewerBuildBadge {
+  position: fixed;
+  right: 6px;
+  bottom: 6px;
+  z-index: 9999;
+  font: 10px/1.2 sans-serif;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 3px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
 </style>
 <script src="data.js"></script>
 </head>
 
 <body>
+<div id="viewerBuildBadge" aria-hidden="true"></div>
 <div id="pano"></div>
 <div id="sceneText"></div>
 <div id="fadeOverlay"></div>
@@ -762,10 +779,14 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05 ipad-canvas-matte';
+var BUILD_STAMP = '2026-06-05-ipadm2';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
+(function showViewerBuildBadge() {
+  var el = document.getElementById('viewerBuildBadge');
+  if (el) el.textContent = 'v ' + BUILD_STAMP;
+})();
 
 var panoElement = document.querySelector('#pano');
 var viewer = new Marzipano.Viewer(panoElement);
@@ -2223,13 +2244,20 @@ function applyVideoHotspotTone(el, tone) {
 
 function isAppleMobileOrTablet() {
   var ua = navigator.userAgent || '';
-  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  if (/iPad|iPhone|iPod/i.test(ua)) return true;
+  try {
+    if (navigator.userAgentData && navigator.userAgentData.platform === 'iOS') return true;
+  } catch (e1) {}
   if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+  if (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 0 && 'ontouchstart' in window) return true;
   return false;
 }
 
 function guidePreferCanvasBlackKey(vh) {
   if (vh && vh.canvasBlackKey === false) return false;
+  try {
+    if (new URLSearchParams(window.location.search).get('canvasMatte') === '1') return true;
+  } catch (e2) {}
   return isAppleMobileOrTablet();
 }
 
