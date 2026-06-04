@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>VR Tour</title>
+<title>万年山VR【更新ipadm6】</title>
 <meta name="viewport" content="target-densitydpi=device-dpi, width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, minimal-ui" />
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
@@ -261,6 +261,54 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 .scene-video-mask.guide-matte-lighten {
   mix-blend-mode: lighten;
 }
+/* iPad/Safari: ホットスポット全体で lighten（PCと同じ見え方） */
+.scene-video-2d-wrap.guide-ios-visible {
+  isolation: isolate;
+  mix-blend-mode: lighten;
+  -webkit-transform: translateZ(2px);
+  transform: translateZ(2px);
+  z-index: 2;
+}
+.scene-video-2d-wrap.guide-ios-visible .scene-video-mask {
+  mix-blend-mode: lighten;
+  -webkit-transform: translateZ(1px);
+  transform: translateZ(1px);
+}
+.scene-video-2d-wrap.guide-ios-visible video.scene-video-2d {
+  opacity: 1 !important;
+  mix-blend-mode: lighten;
+  position: relative;
+}
+.scene-video-mask.guide-img-matte img.guide-video-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  pointer-events: none;
+}
+#guideIosOverlayRoot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 360;
+  overflow: visible;
+}
+.guide-ios-screen-overlay {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  mix-blend-mode: lighten;
+  -webkit-mix-blend-mode: lighten;
+  isolation: isolate;
+  box-sizing: border-box;
+}
+.guide-ios-screen-overlay.guide-img-matte {
+  mix-blend-mode: normal;
+}
 .scene-video-mask.guide-canvas-matte canvas.guide-video-canvas {
   display: block;
   width: 100%;
@@ -407,15 +455,20 @@ body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 
 #viewerBuildBadge {
   position: fixed;
-  right: 6px;
-  bottom: 6px;
-  z-index: 9999;
-  font: 10px/1.2 sans-serif;
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(0, 0, 0, 0.45);
-  padding: 3px 6px;
-  border-radius: 4px;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 99999;
+  font: bold 14px/1.35 "Meiryo", sans-serif;
+  color: #fff;
+  background: #c62828;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 2px solid #ffe26a;
   pointer-events: none;
+  max-width: 94vw;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
 </style>
@@ -423,7 +476,7 @@ body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 </head>
 
 <body>
-<div id="viewerBuildBadge" aria-hidden="true"></div>
+<div id="viewerBuildBadge" style="position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483647;background:#c62828;color:#fff;font:bold 14px Meiryo,sans-serif;padding:8px 14px;border:2px solid #ffe26a;border-radius:8px;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.6)">更新版 2026-06-05-ipadm6</div>
 <div id="pano"></div>
 <div id="sceneText"></div>
 <div id="fadeOverlay"></div>
@@ -779,17 +832,18 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm2';
+var BUILD_STAMP = '2026-06-05-ipadm6';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
 (function showViewerBuildBadge() {
   var el = document.getElementById('viewerBuildBadge');
-  if (el) el.textContent = 'v ' + BUILD_STAMP;
+  if (el) el.textContent = '更新版 ' + BUILD_STAMP;
 })();
 
 var panoElement = document.querySelector('#pano');
 var viewer = new Marzipano.Viewer(panoElement);
+bindIOSGuideVideoKick();
 
 // ★画面タッチで自動再生停止（黄色矢印と同じ方式）
 panoElement.addEventListener('mousedown', function() {
@@ -1961,7 +2015,130 @@ function playLinkedPortalVideo(hs) {
   };
 }
 
+function destroyGuideIosOverlayRoot() {
+  if (window.guideIosOverlayRaf) {
+    cancelAnimationFrame(window.guideIosOverlayRaf);
+    window.guideIosOverlayRaf = 0;
+  }
+  var root = document.getElementById('guideIosOverlayRoot');
+  if (root) root.innerHTML = '';
+}
+
+function ensureGuideIosOverlayRoot() {
+  var root = document.getElementById('guideIosOverlayRoot');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'guideIosOverlayRoot';
+    document.body.appendChild(root);
+  }
+  return root;
+}
+
+function guideCoordsToScreenApprox(yaw, pitch) {
+  var view = currentScene && currentScene.view && currentScene.view();
+  if (!view) return null;
+  try {
+    if (typeof view.coordinatesToScreen === 'function') {
+      var scr = view.coordinatesToScreen({ yaw: yaw, pitch: pitch });
+      if (scr && isFinite(scr.x) && isFinite(scr.y)) return scr;
+    }
+  } catch (e0) {}
+  var p = view.parameters();
+  if (!p) return null;
+  var dy = yaw - p.yaw;
+  while (dy > Math.PI) dy -= 2 * Math.PI;
+  while (dy < -Math.PI) dy += 2 * Math.PI;
+  var dp = pitch - p.pitch;
+  var fov = p.fov || 1.2;
+  if (Math.abs(dy) > fov * 0.62 || Math.abs(dp) > fov * 0.55) return null;
+  var panoW = panoElement.clientWidth || window.innerWidth;
+  var panoH = panoElement.clientHeight || window.innerHeight;
+  return {
+    x: panoW * (0.5 + dy / fov),
+    y: panoH * (0.5 + dp / fov)
+  };
+}
+
+function updateAllGuideIosOverlays() {
+  if (!guideDeviceIsIosSafari()) return;
+  var panoRect = panoElement.getBoundingClientRect();
+  (window.sceneVideoEls || []).forEach(function(entry) {
+    if (!entry.iosScreenOverlay || !entry.iosOverlayEl) return;
+    var scr = guideCoordsToScreenApprox(entry.placeYaw, entry.placePitch);
+    var el = entry.iosOverlayEl;
+    if (!scr) {
+      el.style.display = 'none';
+      return;
+    }
+    var w = entry.overlayW || 280;
+    var h = entry.overlayH || 380;
+    el.style.display = 'block';
+    el.style.left = (panoRect.left + scr.x - w * 0.5) + 'px';
+    el.style.top = (panoRect.top + scr.y - h * 0.5) + 'px';
+    el.style.width = w + 'px';
+    el.style.height = h + 'px';
+  });
+}
+
+function bindGuideIosOverlayTracking() {
+  if (!guideDeviceIsIosSafari() || window.guideIosOverlayRaf) return;
+  function tick() {
+    updateAllGuideIosOverlays();
+    window.guideIosOverlayRaf = requestAnimationFrame(tick);
+  }
+  window.guideIosOverlayRaf = requestAnimationFrame(tick);
+}
+
+function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
+  var root = ensureGuideIosOverlayRoot();
+  var box = document.createElement('div');
+  box.className = 'guide-ios-screen-overlay';
+  box.style.width = w + 'px';
+  box.style.height = h + 'px';
+  var maskWrap = document.createElement('div');
+  maskWrap.className = 'scene-video-mask';
+  maskWrap.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden';
+  var vid = document.createElement('video');
+  vid.className = 'scene-video-2d';
+  appendGuideVideoSources(vid, vh);
+  vid.loop = vh.loop === true;
+  vid.playsInline = true;
+  vid.setAttribute('playsinline', '');
+  vid.muted = true;
+  vid.preload = 'auto';
+  vid.autoplay = vh.autoplay !== false;
+  maskWrap.appendChild(vid);
+  box.appendChild(maskWrap);
+  root.appendChild(box);
+  var entry = {
+    vid: vid,
+    wrap: box,
+    maskWrap: maskWrap,
+    iosOverlayEl: box,
+    iosScreenOverlay: true,
+    placeYaw: placeYaw,
+    placePitch: placePitch,
+    overlayW: w,
+    overlayH: h,
+    sceneId: sceneId,
+    guidePlaybackDone: false
+  };
+  setupGuideIosLightenMatte(vid, maskWrap, vh, entry);
+  setupGuideVideoPlayback(vid, vh, sceneId, entry);
+  window.sceneVideoEls.push(entry);
+  bindGuideIosOverlayTracking();
+  updateAllGuideIosOverlays();
+  var badge = document.getElementById('viewerBuildBadge');
+  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（iPad・画面上）';
+  console.log('🎬 iPad: 画面固定オーバーレイ（360内ではなく画面上に表示）');
+  vid.addEventListener('error', function() {
+    console.error('🎬 iPad 動画失敗:', vh.src, vid.error);
+    if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（動画読込失敗）';
+  }, { once: true });
+}
+
 function destroySceneVideoHotspots(handles) {
+  destroyGuideIosOverlayRoot();
   (window.sceneVideoEls || []).forEach(function(item) {
     stopGuideCanvasMatte(item);
   });
@@ -2084,15 +2261,23 @@ function appendGuideVideoSources(vid, vh) {
   if (!vid || !vh || !vh.src) return;
   while (vid.firstChild) vid.removeChild(vid.firstChild);
   vid.removeAttribute('src');
-  var hevc = guideVideoHevcSrc(vh.src, vh);
-  if (hevc) {
-    var sHevc = document.createElement('source');
-    sHevc.src = videoHotspotSrcUrl(hevc);
-    sHevc.type = 'video/mp4; codecs="hvc1"';
-    vid.appendChild(sHevc);
+  var webmUrl = videoHotspotSrcUrl(vh.src);
+  if (guideDeviceIsIosSafari()) {
+    vid.src = webmUrl;
+    return;
+  }
+  /* 無い HEVC を先に読むと WebM に落ちないことがあるため WebM のみ（iPad は上で return） */
+  if (!guideDeviceIsIosSafari()) {
+    var hevc = guideVideoHevcSrc(vh.src, vh);
+    if (hevc) {
+      var sHevc = document.createElement('source');
+      sHevc.src = videoHotspotSrcUrl(hevc);
+      sHevc.type = 'video/mp4; codecs="hvc1"';
+      vid.appendChild(sHevc);
+    }
   }
   var sWebm = document.createElement('source');
-  sWebm.src = videoHotspotSrcUrl(vh.src);
+  sWebm.src = webmUrl;
   if (/\.webm$/i.test(vh.src)) sWebm.type = 'video/webm; codecs="vp9"';
   else if (/\.(mp4|m4v)$/i.test(vh.src)) sWebm.type = 'video/mp4';
   else sWebm.type = 'video/webm';
@@ -2253,12 +2438,23 @@ function isAppleMobileOrTablet() {
   return false;
 }
 
+function guideDeviceIsIosSafari() {
+  try {
+    if (new URLSearchParams(window.location.search).get('iosMatte') === '1') return true;
+  } catch (e0) {}
+  if (isAppleMobileOrTablet()) return true;
+  var ua = navigator.userAgent || '';
+  if (/CriOS|FxiOS|EdgiOS/i.test(ua)) return true;
+  if (/Safari/i.test(ua) && !/Chrome|Chromium|Edg\//i.test(ua)) return true;
+  return false;
+}
+
 function guidePreferCanvasBlackKey(vh) {
   if (vh && vh.canvasBlackKey === false) return false;
   try {
-    if (new URLSearchParams(window.location.search).get('canvasMatte') === '1') return true;
-  } catch (e2) {}
-  return isAppleMobileOrTablet();
+    return new URLSearchParams(window.location.search).get('canvasMatte') === '1';
+  } catch (e1) {}
+  return false;
 }
 
 function stopGuideCanvasMatte(entry) {
@@ -2296,9 +2492,9 @@ function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold) {
 }
 
 function syncGuideCanvasSize(entry) {
-  if (!entry || !entry.guideCanvas || !entry.maskWrap) return;
-  var w = entry.maskWrap.clientWidth || parseInt(entry.wrap.style.width, 10) || 280;
-  var h = entry.maskWrap.clientHeight || parseInt(entry.wrap.style.height, 10) || 380;
+  if (!entry || !entry.guideCanvas || !entry.wrap) return;
+  var w = parseInt(entry.wrap.style.width, 10) || 280;
+  var h = parseInt(entry.wrap.style.height, 10) || 380;
   if (entry.guideCanvas.width !== w) entry.guideCanvas.width = w;
   if (entry.guideCanvas.height !== h) entry.guideCanvas.height = h;
 }
@@ -2330,6 +2526,119 @@ function startGuideCanvasMatteLoop(entry, threshold) {
   entry.guideCanvasRaf = requestAnimationFrame(frame);
 }
 
+function ensureGuideVideoPlays(entry) {
+  if (!entry || !entry.vid) return;
+  var vid = entry.vid;
+  vid.muted = true;
+  vid.playsInline = true;
+  vid.setAttribute('playsinline', '');
+  function tryPlay() {
+    var p = vid.play();
+    if (p && p.catch) p.catch(function() {});
+  }
+  vid.addEventListener('canplay', tryPlay);
+  vid.addEventListener('loadeddata', tryPlay);
+  setTimeout(tryPlay, 200);
+  setTimeout(tryPlay, 1000);
+  setTimeout(tryPlay, 2500);
+}
+
+function setupGuideIosLightenMatte(vid, maskWrap, vh, entry) {
+  if (!guideDeviceIsIosSafari() || !vid || !maskWrap || !entry) return false;
+  if (vh && vh.canvasBlackKey === true) return false;
+  entry.guideMatteMode = 'ios-lighten';
+  entry.wrap.classList.add('guide-ios-visible');
+  maskWrap.classList.add('guide-matte-lighten');
+  vid.style.opacity = '1';
+  vid.style.mixBlendMode = 'lighten';
+  vid.style.webkitMixBlendMode = 'lighten';
+  vid.style.position = 'relative';
+  applyVideoHotspotObjectFit(vid, vh);
+  applyVideoHotspotTone(vid, vh.tone);
+  ensureGuideVideoPlays(entry);
+  var badge = document.getElementById('viewerBuildBadge');
+  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（iPad・lighten）';
+  console.log('🎬 iPad: 動画をそのまま表示（lighten・PCと同方式）');
+  entry.vid.addEventListener('loadeddata', function() {
+    maybeIosGuideImgFallback(entry, vh);
+    setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 900);
+  });
+  setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 2800);
+  return true;
+}
+
+function maybeIosGuideImgFallback(entry, vh) {
+  if (!entry || !entry.vid || entry.guideImgFallbackDone) return;
+  if (entry.vid.readyState < 2 || !entry.vid.videoWidth) {
+    ensureGuideVideoPlays(entry);
+    return;
+  }
+  var thr = vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 34;
+  var c = document.createElement('canvas');
+  var w = entry.overlayW || parseInt(entry.wrap.style.width, 10) || 280;
+  var h = entry.overlayH || parseInt(entry.wrap.style.height, 10) || 380;
+  c.width = w;
+  c.height = h;
+  var ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return;
+  drawGuideCanvasBlackKey(ctx, entry.vid, w, h, thr);
+  var opaque = 0;
+  try {
+    var sample = ctx.getImageData(0, 0, w, h).data;
+    for (var i = 3; i < sample.length; i += 16) {
+      if (sample[i] > 20) opaque++;
+    }
+  } catch (e) {
+    if (!entry.iosScreenOverlay) return;
+    opaque = 99;
+  }
+  if (opaque < 4 && !entry.iosScreenOverlay) return;
+  if (opaque < 1 && entry.iosScreenOverlay) return;
+  entry.guideImgFallbackDone = true;
+  entry.wrap.classList.remove('guide-ios-visible');
+  if (entry.iosOverlayEl) entry.iosOverlayEl.classList.add('guide-img-matte');
+  var maskWrap = entry.maskWrap;
+  maskWrap.classList.remove('guide-matte-lighten');
+  maskWrap.classList.add('guide-img-matte');
+  var img = document.createElement('img');
+  img.className = 'guide-video-frame';
+  img.alt = '';
+  applyVideoHotspotTone(img, vh.tone);
+  try {
+    img.src = c.toDataURL('image/png');
+  } catch (e2) {
+    entry.guideImgFallbackDone = false;
+    return;
+  }
+  var vid = entry.vid;
+  vid.style.opacity = '0';
+  maskWrap.insertBefore(img, vid);
+  entry.guideDisplayImg = img;
+  entry.guideCanvas = c;
+  entry.guideCanvasCtx = ctx;
+  function refreshImg() {
+    if (!entry.guideCanvasCtx) return;
+    drawGuideCanvasBlackKey(entry.guideCanvasCtx, entry.vid, w, h, thr);
+    try { img.src = c.toDataURL('image/png'); } catch (e3) {}
+  }
+  entry.vid.addEventListener('play', function() {
+    function loop() {
+      refreshImg();
+      if (!entry.vid.paused && !entry.vid.ended) {
+        entry.guideImgRaf = requestAnimationFrame(loop);
+      }
+    }
+    loop();
+  });
+  entry.vid.addEventListener('pause', refreshImg);
+  entry.vid.addEventListener('seeked', refreshImg);
+  refreshImg();
+  ensureGuideVideoPlays(entry);
+  var badge = document.getElementById('viewerBuildBadge');
+  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（iPad・画像表示）';
+  console.log('🎬 iPad: 画像合成で guide を表示');
+}
+
 function setupGuideCanvasBlackKey(vid, maskWrap, vh, entry) {
   if (!guidePreferCanvasBlackKey(vh) || !vid || !maskWrap || !entry) return false;
   maskWrap.classList.remove('guide-matte-lighten');
@@ -2355,11 +2664,44 @@ function setupGuideCanvasBlackKey(vid, maskWrap, vh, entry) {
     onPaint();
   });
   console.log('🎬 iPad向け: Canvas黒抜きで guide を表示（追加の mov 不要）');
+  var badge = document.getElementById('viewerBuildBadge');
+  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（Canvas黒抜き）';
+  scheduleGuideCanvasWarmup(entry, thr);
   return true;
+}
+
+function scheduleGuideCanvasWarmup(entry, threshold) {
+  if (!entry || !entry.guideCanvas) return;
+  var n = 0;
+  var timer = setInterval(function() {
+    paintGuideCanvasOnce(entry, threshold);
+    n += 1;
+    if (n >= 24) clearInterval(timer);
+  }, 250);
+}
+
+function kickSceneGuideVideos() {
+  (window.sceneVideoEls || []).forEach(function(entry) {
+    if (!entry.vid) return;
+    ensureGuideVideoPlays(entry);
+    if (entry.guideCanvas) {
+      paintGuideCanvasOnce(entry, 34);
+      startGuideCanvasMatteLoop(entry, 34);
+    }
+  });
+}
+
+function bindIOSGuideVideoKick() {
+  if (!guideDeviceIsIosSafari() || window._iosGuideKickBound) return;
+  window._iosGuideKickBound = true;
+  panoElement.addEventListener('touchstart', function() {
+    kickSceneGuideVideos();
+  }, { passive: true });
 }
 
 function applyGuideVideoMatte(vid, maskWrap, vh, entry) {
   if (!vid || !maskWrap) return;
+  if (entry && setupGuideIosLightenMatte(vid, maskWrap, vh, entry)) return;
   if (entry && setupGuideCanvasBlackKey(vid, maskWrap, vh, entry)) return;
   maskWrap.classList.add('guide-matte-lighten');
   applyVideoHotspotObjectFit(vid, vh);
@@ -2591,6 +2933,10 @@ function attachVideoHotspots(sceneId, sceneData) {
     bindVideo2DTap(wrap, vid, vh);
     var placeYaw = vh.yaw !== undefined ? degToRad(parseFloat(vh.yaw)) : 0;
     var placePitch = vh.pitch !== undefined ? degToRad(parseFloat(vh.pitch)) : 0;
+    if (guideDeviceIsIosSafari() && !embedPlacerMode) {
+      attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch);
+      return;
+    }
     if (Math.abs(parseFloat(vh.pitch)) > 45) {
       console.warn('🎬 pitch=' + vh.pitch + '° は大きすぎて見えないことが多いです。8〜15 前後を推奨');
     }
@@ -4449,6 +4795,6 @@ switchScene(urlParams.get('id') || '0-aa001');
 
 }
 </script>
-<script src="viewer-ipad-fix.js?v=ipadm5"></script>
+<script src="viewer-ipad-fix.js?v=ipadm6"></script>
 </body>
 </html>
