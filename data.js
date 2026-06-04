@@ -1063,19 +1063,18 @@ var APP_DATA = {
       "videoHotspots": [
         {
           "src": "video/guide_alpha.webm",
-          "srcIos": "video/guide_alpha_ios.mp4",
           "yaw": 28.7,
           "pitch": 18.6,
-          "width": 540,
-          "height": 567,
+          "width": 643,
+          "height": 675,
           "radius": 850,
           "fade": 0,
           "fadeBottom": 10,
           "fullscreen": false,
           "objectFit": "contain",
           "tone": {
-            "brightness": 0.96,
-            "contrast": 0.94,
+            "brightness": 0.99,
+            "contrast": 1.08,
             "saturate": 0.88
           },
           "autoplay": true,
