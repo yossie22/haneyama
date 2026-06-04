@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>万年山VR【更新ipadm6】</title>
+<title>万年山VR</title>
 <meta name="viewport" content="target-densitydpi=device-dpi, width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, minimal-ui" />
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
@@ -453,30 +453,13 @@ body.embed-placer #sceneText { display: none !important; }
 body.embed-placer #videoFullscreenOverlay { display: none !important; }
 body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 
-#viewerBuildBadge {
-  position: fixed;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
-  z-index: 99999;
-  font: bold 14px/1.35 "Meiryo", sans-serif;
-  color: #fff;
-  background: #c62828;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 2px solid #ffe26a;
-  pointer-events: none;
-  max-width: 94vw;
-  text-align: center;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-}
+#viewerBuildBadge { display: none !important; }
 
 </style>
 <script src="data.js"></script>
 </head>
 
 <body>
-<div id="viewerBuildBadge" style="position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483647;background:#c62828;color:#fff;font:bold 14px Meiryo,sans-serif;padding:8px 14px;border:2px solid #ffe26a;border-radius:8px;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.6)">更新版 2026-06-05-ipadm6</div>
 <div id="pano"></div>
 <div id="sceneText"></div>
 <div id="fadeOverlay"></div>
@@ -832,14 +815,10 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm6';
+var BUILD_STAMP = '2026-06-05-ipadm7';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
-(function showViewerBuildBadge() {
-  var el = document.getElementById('viewerBuildBadge');
-  if (el) el.textContent = '更新版 ' + BUILD_STAMP;
-})();
 
 var panoElement = document.querySelector('#pano');
 var viewer = new Marzipano.Viewer(panoElement);
@@ -2066,17 +2045,24 @@ function updateAllGuideIosOverlays() {
     if (!entry.iosScreenOverlay || !entry.iosOverlayEl) return;
     var scr = guideCoordsToScreenApprox(entry.placeYaw, entry.placePitch);
     var el = entry.iosOverlayEl;
+    var panoW = panoRect.width || panoElement.clientWidth || window.innerWidth;
+    var panoH = panoRect.height || panoElement.clientHeight || window.innerHeight;
     if (!scr) {
-      el.style.display = 'none';
-      return;
+      scr = { x: panoW * 0.58, y: panoH * 0.28 };
     }
     var w = entry.overlayW || 280;
     var h = entry.overlayH || 380;
+    var maxW = Math.min(w, Math.round(window.innerWidth * 0.42));
+    var scale = maxW / w;
+    var drawW = Math.round(w * scale);
+    var drawH = Math.round(h * scale);
     el.style.display = 'block';
-    el.style.left = (panoRect.left + scr.x - w * 0.5) + 'px';
-    el.style.top = (panoRect.top + scr.y - h * 0.5) + 'px';
-    el.style.width = w + 'px';
-    el.style.height = h + 'px';
+    el.style.left = (panoRect.left + scr.x - drawW * 0.5) + 'px';
+    el.style.top = (panoRect.top + scr.y - drawH * 0.5) + 'px';
+    el.style.width = drawW + 'px';
+    el.style.height = drawH + 'px';
+    entry.overlayDrawW = drawW;
+    entry.overlayDrawH = drawH;
   });
 }
 
@@ -2128,13 +2114,27 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   window.sceneVideoEls.push(entry);
   bindGuideIosOverlayTracking();
   updateAllGuideIosOverlays();
-  var badge = document.getElementById('viewerBuildBadge');
-  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（iPad・画面上）';
-  console.log('🎬 iPad: 画面固定オーバーレイ（360内ではなく画面上に表示）');
-  vid.addEventListener('error', function() {
-    console.error('🎬 iPad 動画失敗:', vh.src, vid.error);
-    if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（動画読込失敗）';
-  }, { once: true });
+  console.log('🎬 iPad: 画面固定オーバーレイ');
+  vid.addEventListener('loadeddata', function() {
+    setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 400);
+    setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 1500);
+  });
+  vid.addEventListener('error', function onIosVidErr() {
+    console.warn('🎬 iPad 動画失敗、別形式を試します:', vid.src, vid.error);
+    var webm = videoHotspotSrcUrl(vh.src);
+    var mp4 = guideIosMp4Src(vh);
+    if (mp4 && vid.src.indexOf('.mp4') >= 0 && webm) {
+      vid.src = webm;
+      vid.load();
+      ensureGuideVideoPlays(entry);
+      return;
+    }
+    if (webm && vid.src !== webm) {
+      vid.src = webm;
+      vid.load();
+      ensureGuideVideoPlays(entry);
+    }
+  });
 }
 
 function destroySceneVideoHotspots(handles) {
@@ -2248,6 +2248,14 @@ function videoHotspotSrcUrl(rawSrc) {
 }
 
 /** WebM の透過は Chrome 向け。iPad/Safari は HEVC（hvc1）が必須。 */
+function guideIosMp4Src(vh) {
+  if (vh && vh.srcIos) return vh.srcIos;
+  var s = (vh && vh.src) || '';
+  if (/\.webm$/i.test(s)) return s.replace(/\.webm$/i, '_ios.mp4');
+  if (/\.(mp4|m4v)$/i.test(s)) return s;
+  return s.replace(/(\.[^./]+)$/, '_ios.mp4');
+}
+
 function guideVideoHevcSrc(webmSrc, vh) {
   if (vh && vh.srcHevc) return vh.srcHevc;
   var s = webmSrc || '';
@@ -2263,7 +2271,8 @@ function appendGuideVideoSources(vid, vh) {
   vid.removeAttribute('src');
   var webmUrl = videoHotspotSrcUrl(vh.src);
   if (guideDeviceIsIosSafari()) {
-    vid.src = webmUrl;
+    var mp4Path = guideIosMp4Src(vh);
+    vid.src = mp4Path ? videoHotspotSrcUrl(mp4Path) : webmUrl;
     return;
   }
   /* 無い HEVC を先に読むと WebM に落ちないことがあるため WebM のみ（iPad は上で return） */
@@ -2556,9 +2565,7 @@ function setupGuideIosLightenMatte(vid, maskWrap, vh, entry) {
   applyVideoHotspotObjectFit(vid, vh);
   applyVideoHotspotTone(vid, vh.tone);
   ensureGuideVideoPlays(entry);
-  var badge = document.getElementById('viewerBuildBadge');
-  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（iPad・lighten）';
-  console.log('🎬 iPad: 動画をそのまま表示（lighten・PCと同方式）');
+  console.log('🎬 iPad: lighten 表示');
   entry.vid.addEventListener('loadeddata', function() {
     maybeIosGuideImgFallback(entry, vh);
     setTimeout(function() { maybeIosGuideImgFallback(entry, vh); }, 900);
@@ -2575,8 +2582,8 @@ function maybeIosGuideImgFallback(entry, vh) {
   }
   var thr = vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 34;
   var c = document.createElement('canvas');
-  var w = entry.overlayW || parseInt(entry.wrap.style.width, 10) || 280;
-  var h = entry.overlayH || parseInt(entry.wrap.style.height, 10) || 380;
+  var w = entry.overlayDrawW || entry.overlayW || parseInt(entry.wrap.style.width, 10) || 280;
+  var h = entry.overlayDrawH || entry.overlayH || parseInt(entry.wrap.style.height, 10) || 380;
   c.width = w;
   c.height = h;
   var ctx = c.getContext('2d', { willReadFrequently: true });
@@ -2593,7 +2600,7 @@ function maybeIosGuideImgFallback(entry, vh) {
     opaque = 99;
   }
   if (opaque < 4 && !entry.iosScreenOverlay) return;
-  if (opaque < 1 && entry.iosScreenOverlay) return;
+  if (entry.iosScreenOverlay && entry.vid.videoWidth > 0 && opaque < 4) opaque = 4;
   entry.guideImgFallbackDone = true;
   entry.wrap.classList.remove('guide-ios-visible');
   if (entry.iosOverlayEl) entry.iosOverlayEl.classList.add('guide-img-matte');
@@ -2634,8 +2641,6 @@ function maybeIosGuideImgFallback(entry, vh) {
   entry.vid.addEventListener('seeked', refreshImg);
   refreshImg();
   ensureGuideVideoPlays(entry);
-  var badge = document.getElementById('viewerBuildBadge');
-  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（iPad・画像表示）';
   console.log('🎬 iPad: 画像合成で guide を表示');
 }
 
@@ -2664,8 +2669,6 @@ function setupGuideCanvasBlackKey(vid, maskWrap, vh, entry) {
     onPaint();
   });
   console.log('🎬 iPad向け: Canvas黒抜きで guide を表示（追加の mov 不要）');
-  var badge = document.getElementById('viewerBuildBadge');
-  if (badge) badge.textContent = '更新版 ' + BUILD_STAMP + '（Canvas黒抜き）';
   scheduleGuideCanvasWarmup(entry, thr);
   return true;
 }
@@ -4795,6 +4798,6 @@ switchScene(urlParams.get('id') || '0-aa001');
 
 }
 </script>
-<script src="viewer-ipad-fix.js?v=ipadm6"></script>
+<script src="viewer-ipad-fix.js?v=ipadm7"></script>
 </body>
 </html>

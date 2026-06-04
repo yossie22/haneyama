@@ -1063,6 +1063,7 @@ var APP_DATA = {
       "videoHotspots": [
         {
           "src": "video/guide_alpha.webm",
+          "srcIos": "video/guide_alpha_ios.mp4",
           "yaw": 28.7,
           "pitch": 18.6,
           "width": 540,
