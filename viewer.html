@@ -838,7 +838,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm14';
+var BUILD_STAMP = '2026-06-05-ipadm15';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2061,6 +2061,34 @@ function guideCoordsToScreenApprox(yaw, pitch) {
   };
 }
 
+/** iPad 画面固定オーバーレイ: data.js の width/height に比例（旧 42% 上限は大きさ変更が効かなくなる） */
+function computeGuideIosOverlayDrawSize(dataW, dataH, panoW, panoH) {
+  var w = Math.max(200, parseInt(dataW, 10) || 280);
+  var h = Math.max(260, parseInt(dataH, 10) || 380);
+  var pw = Math.max(320, panoW || window.innerWidth || 320);
+  var ph = Math.max(240, panoH || window.innerHeight || 240);
+  var REF_DATA_W = 280;
+  var baseFrac = 0.28;
+  var drawW = Math.round(pw * baseFrac * (w / REF_DATA_W));
+  var drawH = Math.round(drawW * (h / w));
+  var capW = Math.round(pw * 0.92);
+  var capH = Math.round(ph * 0.88);
+  if (drawW > capW) {
+    var s = capW / drawW;
+    drawW = capW;
+    drawH = Math.round(drawH * s);
+  }
+  if (drawH > capH) {
+    var s2 = capH / drawH;
+    drawH = capH;
+    drawW = Math.round(drawW * s2);
+  }
+  return {
+    drawW: Math.max(80, drawW),
+    drawH: Math.max(100, drawH)
+  };
+}
+
 function updateAllGuideIosOverlays() {
   if (!guideDeviceIsIosSafari()) return;
   var curId = currentSceneObj && currentSceneObj.data ? currentSceneObj.data.id : null;
@@ -2078,12 +2106,9 @@ function updateAllGuideIosOverlays() {
     if (!scr) {
       scr = { x: panoW * 0.58, y: panoH * 0.28 };
     }
-    var w = entry.overlayW || 280;
-    var h = entry.overlayH || 380;
-    var maxW = Math.min(w, Math.round(window.innerWidth * 0.42));
-    var scale = maxW / w;
-    var drawW = Math.round(w * scale);
-    var drawH = Math.round(h * scale);
+    var sized = computeGuideIosOverlayDrawSize(entry.overlayW, entry.overlayH, panoW, panoH);
+    var drawW = sized.drawW;
+    var drawH = sized.drawH;
     el.style.display = 'block';
     el.style.left = (panoRect.left + scr.x - drawW * 0.5) + 'px';
     el.style.top = (panoRect.top + scr.y - drawH * 0.5) + 'px';
@@ -2142,7 +2167,10 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   window.sceneVideoEls.push(entry);
   bindGuideIosOverlayTracking();
   updateAllGuideIosOverlays();
-  console.log('🎬 iPad: Canvas黒抜き（画面固定）');
+  var panoW0 = panoElement.clientWidth || window.innerWidth;
+  var panoH0 = panoElement.clientHeight || window.innerHeight;
+  var sz0 = computeGuideIosOverlayDrawSize(w, h, panoW0, panoH0);
+  console.log('🎬 iPad: Canvas黒抜き data=' + w + 'x' + h + ' → 表示' + sz0.drawW + 'x' + sz0.drawH);
   vid.addEventListener('error', function onIosVidErr() {
     console.warn('🎬 iPad 動画失敗、別形式を試します:', vid.src, vid.error);
     var webm = videoHotspotSrcUrl(vh.src);
