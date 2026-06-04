@@ -333,12 +333,21 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
   opacity: 1 !important;
   background: transparent;
 }
-.guide-ios-screen-overlay.guide-ios-canvas-matte canvas.guide-video-canvas {
+.guide-ios-screen-overlay.guide-ios-canvas-matte canvas.guide-video-canvas,
+.guide-ios-screen-overlay.guide-ios-canvas-lighter canvas.guide-video-canvas {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: center center;
+  background: transparent;
+}
+.guide-ios-screen-overlay.guide-ios-canvas-lighter {
+  mix-blend-mode: normal;
+  background: transparent !important;
+  isolation: isolate;
+}
+.guide-ios-screen-overlay.guide-ios-canvas-lighter .scene-video-mask {
   background: transparent;
 }
 .scene-video-mask.guide-canvas-matte canvas.guide-video-canvas {
@@ -867,7 +876,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm22';
+var BUILD_STAMP = '2026-06-05-ipadm23';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2212,10 +2221,10 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   try { tryLighten = new URLSearchParams(window.location.search).get('iosLighten') === '1'; } catch (eQ) {}
   if (tryLighten) {
     setupGuideIosScreenLightenMatte(vid, maskWrap, vh, entry);
-    console.log('🎬 iPad: lighten（?iosLighten=1）');
+    console.log('🎬 iPad: CSS lighten（?iosLighten=1）');
   } else {
     setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry);
-    console.log('🎬 iPad: 透過キャンバス（黒枠なし）');
+    console.log('🎬 iPad: canvas+lighter ' + (entry.iosMatteDrawMode || ''));
   }
   setupGuideVideoPlayback(vid, vh, sceneId, entry);
   window.sceneVideoEls.push(entry);
@@ -2833,11 +2842,17 @@ function setupGuideIosScreenLightenMatte(vid, maskWrap, vh, entry) {
   return true;
 }
 
+function guideIosScreenMatteDrawMode(vh) {
+  if (guideIosScreenPreferCanvasMatte(vh)) return 'key';
+  return 'lighter';
+}
+
 function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
   if (!vid || !maskWrap || !entry) return false;
   entry.iosUseNativeVideo = false;
-  entry.wrap.classList.remove('guide-ios-visible', 'guide-img-matte');
-  entry.wrap.classList.add('guide-ios-canvas-matte');
+  entry.iosMatteDrawMode = guideIosScreenMatteDrawMode(vh);
+  entry.wrap.classList.remove('guide-ios-visible', 'guide-img-matte', 'guide-ios-canvas-matte', 'guide-ios-canvas-lighter');
+  entry.wrap.classList.add(entry.iosMatteDrawMode === 'lighter' ? 'guide-ios-canvas-lighter' : 'guide-ios-canvas-matte');
   maskWrap.classList.remove('guide-matte-lighten', 'guide-img-matte');
   maskWrap.style.background = 'transparent';
   var oldC = maskWrap.querySelector('canvas.guide-video-canvas');
@@ -2869,6 +2884,48 @@ function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
   setTimeout(paint, 300);
   setTimeout(paint, 1200);
   return true;
+}
+
+/** iPad: Canvas 2D の lighter で黒背景を消す（PC の mix-blend-mode: lighten 相当・髪の穴抜き不要） */
+function drawGuideCanvasLighterMatte(ctx, vid, cw, ch) {
+  var vw = vid.videoWidth;
+  var vh = vid.videoHeight;
+  if (!vw || !vh || !ctx || cw < 1 || ch < 1) return;
+  ctx.clearRect(0, 0, cw, ch);
+  var scale = Math.min(cw / vw, ch / vh);
+  var dw = vw * scale;
+  var dh = vh * scale;
+  var dx = (cw - dw) * 0.5;
+  var dy = (ch - dh) * 0.5;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(vid, 0, 0, vw, vh, dx, dy, dw, dh);
+  ctx.restore();
+  trimGuideCanvasLighterBlackFringe(ctx, cw, ch);
+}
+
+/** lighter 後に残るごく細い黒フチだけ除去 */
+function trimGuideCanvasLighterBlackFringe(ctx, cw, ch) {
+  var img;
+  try { img = ctx.getImageData(0, 0, cw, ch); } catch (e) { return; }
+  var d = img.data;
+  var n = cw * ch;
+  var a = new Uint8Array(n);
+  var i;
+  for (i = 0; i < n; i++) a[i] = d[i * 4 + 3];
+  for (var y = 1; y < ch - 1; y++) {
+    for (var x = 1; x < cw - 1; x++) {
+      var idx = y * cw + x;
+      var p = idx * 4;
+      if (d[p + 3] < 10) continue;
+      var mx = d[p];
+      if (d[p + 1] > mx) mx = d[p + 1];
+      if (d[p + 2] > mx) mx = d[p + 2];
+      if (mx > 32) continue;
+      if (guideCanvasHasClearNeighbor(a, idx, cw, 30)) d[p + 3] = 0;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold, softEdge, entry) {
@@ -2916,11 +2973,17 @@ function syncGuideCanvasSize(entry) {
 function paintGuideCanvasOnce(entry, threshold) {
   if (!entry || !entry.guideCanvasCtx || !entry.vid) return;
   syncGuideCanvasSize(entry);
+  var cw = entry.guideCanvas.width;
+  var ch = entry.guideCanvas.height;
+  if (entry.iosMatteDrawMode === 'lighter') {
+    drawGuideCanvasLighterMatte(entry.guideCanvasCtx, entry.vid, cw, ch);
+    return;
+  }
   drawGuideCanvasBlackKey(
     entry.guideCanvasCtx,
     entry.vid,
-    entry.guideCanvas.width,
-    entry.guideCanvas.height,
+    cw,
+    ch,
     threshold,
     entry.iosBlackKeySoft,
     entry
