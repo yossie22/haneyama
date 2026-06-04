@@ -867,7 +867,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm21';
+var BUILD_STAMP = '2026-06-05-ipadm22';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2583,74 +2583,94 @@ function guideCanvasKeyAlpha(r, g, b, thr, soft) {
   return 255;
 }
 
-/** iPad 画面固定: 真っ黒だけ抜き、首・髪は不透明優先（半透明の隙間を作らない） */
+/** iPad 画面固定: 真っ黒のみ透明（首・髪はほぼ常に不透明） */
 function guideCanvasKeyAlphaIos(r, g, b) {
+  var lum = 0.299 * r + 0.587 * g + 0.114 * b;
   var mx = r;
   if (g > mx) mx = g;
   if (b > mx) mx = b;
-  var mn = r;
-  if (g < mn) mn = g;
-  if (b < mn) mn = b;
-  var sat = mx - mn;
-  if (mx <= 14 && sat <= 6) return 0;
-  if (mx >= 20 || sat >= 5) return 255;
-  if (mx <= 26 && sat <= 9) {
-    return Math.min(255, Math.round(((mx - 14) / 12) * 255));
+  var sat = mx - Math.min(r, Math.min(g, b));
+  if (lum <= 11 && sat <= 7) return 0;
+  if (lum >= 22 || sat >= 4) return 255;
+  if (lum <= 18 && sat <= 8) {
+    return Math.min(255, Math.round(((lum - 11) / 7) * 255));
   }
   return 255;
 }
 
-/** iPad: 首まわり・髪のすき間（半透明の小穴）を不透明で埋める */
-function fillGuideCanvasAlphaHoles(d, cw, ch) {
-  if (!d || cw < 3 || ch < 3) return;
-  var n = cw * ch;
-  var a = new Uint8Array(n);
-  var i;
-  for (i = 0; i < n; i++) a[i] = d[i * 4 + 3];
-  for (var y = 1; y < ch - 1; y++) {
-    for (var x = 1; x < cw - 1; x++) {
-      var idx = y * cw + x;
-      if (a[idx] >= 210) continue;
-      var p = idx * 4;
-      var r = d[p];
-      var g = d[p + 1];
-      var b = d[p + 2];
-      var mx = r;
-      if (g > mx) mx = g;
-      if (b > mx) mx = b;
-      var sat = mx - Math.min(r, Math.min(g, b));
-      if (mx < 18) continue;
-      var strong = 0;
-      if (a[idx - 1] > 215) strong++;
-      if (a[idx + 1] > 215) strong++;
-      if (a[idx - cw] > 215) strong++;
-      if (a[idx + cw] > 215) strong++;
-      if (strong >= 3) {
-        d[p + 3] = 255;
-        if (a[idx] < 140 && mx >= 28) {
-          var lift = 18;
-          d[p] = Math.min(255, r + lift);
-          d[p + 1] = Math.min(255, g + lift * 0.9);
-          d[p + 2] = Math.min(255, b + lift * 0.85);
-        }
-      }
-    }
-  }
+function guideCanvasNeighborOffsets(cw) {
+  return [-1, 1, -cw, cw, -cw - 1, -cw + 1, cw - 1, cw + 1];
 }
 
-/** iPad: 輪郭の黒フチを削る（2pass・やや広め） */
-function erodeGuideCanvasDarkFringe(d, cw, ch, passCount) {
+function guideCanvasCountStrongAlpha(a, idx, cw, thresh) {
+  var offs = guideCanvasNeighborOffsets(cw);
+  var strong = 0;
+  var k;
+  for (k = 0; k < offs.length; k++) {
+    if (a[idx + offs[k]] > thresh) strong++;
+  }
+  return strong;
+}
+
+function guideCanvasHasClearNeighbor(a, idx, cw, clearThr) {
+  var offs = guideCanvasNeighborOffsets(cw);
+  var k;
+  for (k = 0; k < offs.length; k++) {
+    if (a[idx + offs[k]] < clearThr) return true;
+  }
+  return false;
+}
+
+/** iPad: 首・髪のすき間（半透明穴）を埋める（8方向・2回） */
+function fillGuideCanvasAlphaHoles(d, cw, ch, rounds) {
   if (!d || cw < 3 || ch < 3) return;
-  var passes = passCount != null ? passCount : 2;
   var n = cw * ch;
-  for (var pass = 0; pass < passes; pass++) {
+  var passNum = rounds != null ? rounds : 2;
+  var pass;
+  for (pass = 0; pass < passNum; pass++) {
     var a = new Uint8Array(n);
     var i;
     for (i = 0; i < n; i++) a[i] = d[i * 4 + 3];
     for (var y = 1; y < ch - 1; y++) {
       for (var x = 1; x < cw - 1; x++) {
         var idx = y * cw + x;
-        if (a[idx] < 80) continue;
+        if (a[idx] >= 235) continue;
+        var p = idx * 4;
+        var r = d[p];
+        var g = d[p + 1];
+        var b = d[p + 2];
+        var mx = r;
+        if (g > mx) mx = g;
+        if (b > mx) mx = b;
+        if (mx < 14) continue;
+        if (guideCanvasCountStrongAlpha(a, idx, cw, 200) >= 4) {
+          d[p + 3] = 255;
+          if (a[idx] < 200) {
+            var lift = mx < 40 ? 28 : 14;
+            d[p] = Math.min(255, r + lift);
+            d[p + 1] = Math.min(255, g + Math.round(lift * 0.92));
+            d[p + 2] = Math.min(255, b + Math.round(lift * 0.88));
+          }
+        }
+      }
+    }
+  }
+}
+
+/** iPad: 輪郭の黒線を削る（8方向・複数pass） */
+function erodeGuideCanvasDarkFringe(d, cw, ch, passCount) {
+  if (!d || cw < 3 || ch < 3) return;
+  var passes = passCount != null ? passCount : 3;
+  var n = cw * ch;
+  var pass;
+  for (pass = 0; pass < passes; pass++) {
+    var a = new Uint8Array(n);
+    var i;
+    for (i = 0; i < n; i++) a[i] = d[i * 4 + 3];
+    for (var y = 1; y < ch - 1; y++) {
+      for (var x = 1; x < cw - 1; x++) {
+        var idx = y * cw + x;
+        if (a[idx] < 40) continue;
         var p = idx * 4;
         var r = d[p];
         var g = d[p + 1];
@@ -2659,17 +2679,13 @@ function erodeGuideCanvasDarkFringe(d, cw, ch, passCount) {
         if (g > mx) mx = g;
         if (b > mx) mx = b;
         var sat = mx - Math.min(r, Math.min(g, b));
-        if (mx > 62 || sat > 28) continue;
-        var nearClear = a[idx - 1] < 32 || a[idx + 1] < 32 || a[idx - cw] < 32 || a[idx + cw] < 32;
-        if (!nearClear && pass === 0) {
-          nearClear = a[idx - 1] < 60 || a[idx + 1] < 60 || a[idx - cw] < 60 || a[idx + cw] < 60;
-        }
-        if (!nearClear) continue;
-        if (mx < 42 && a[idx] >= 200) {
-          var lift = (42 - mx) * 0.55;
+        if (mx > 78 || sat > 34) continue;
+        if (!guideCanvasHasClearNeighbor(a, idx, cw, pass < 2 ? 48 : 36)) continue;
+        if (mx < 58) {
+          var lift = (58 - mx) * 0.72;
           d[p] = Math.min(255, Math.round(r + lift));
-          d[p + 1] = Math.min(255, Math.round(g + lift * 0.92));
-          d[p + 2] = Math.min(255, Math.round(b + lift * 0.88));
+          d[p + 1] = Math.min(255, Math.round(g + lift * 0.93));
+          d[p + 2] = Math.min(255, Math.round(b + lift * 0.9));
         }
         d[p + 3] = 0;
       }
@@ -2677,10 +2693,39 @@ function erodeGuideCanvasDarkFringe(d, cw, ch, passCount) {
   }
 }
 
+/** iPad: 半透明の暗い縁の RGB を持ち上げ（黒線の見え方を弱める） */
+function liftGuideCanvasDarkEdgeRgb(d, cw, ch) {
+  if (!d || cw < 3 || ch < 3) return;
+  var n = cw * ch;
+  for (var i = 0; i < n; i++) {
+    var p = i * 4;
+    var a = d[p + 3];
+    if (a < 8 || a >= 255) continue;
+    var r = d[p];
+    var g = d[p + 1];
+    var b = d[p + 2];
+    var mx = r;
+    if (g > mx) mx = g;
+    if (b > mx) mx = b;
+    if (mx > 72) continue;
+    var lift = (72 - mx) * (1 - a / 255) * 0.85;
+    d[p] = Math.min(255, Math.round(r + lift));
+    d[p + 1] = Math.min(255, Math.round(g + lift * 0.94));
+    d[p + 2] = Math.min(255, Math.round(b + lift * 0.9));
+  }
+}
+
 function polishGuideCanvasIosMatte(d, cw, ch) {
   if (!d || cw < 3 || ch < 3) return;
-  fillGuideCanvasAlphaHoles(d, cw, ch);
-  erodeGuideCanvasDarkFringe(d, cw, ch, 2);
+  fillGuideCanvasAlphaHoles(d, cw, ch, 2);
+  liftGuideCanvasDarkEdgeRgb(d, cw, ch);
+  erodeGuideCanvasDarkFringe(d, cw, ch, 3);
+  fillGuideCanvasAlphaHoles(d, cw, ch, 1);
+}
+
+function guideIosMattePixelScale(entry) {
+  if (!entry || !entry.iosScreenCanvasKey) return 1;
+  return entry.iosMatteScale != null ? entry.iosMatteScale : 2;
 }
 
 function isAppleMobileOrTablet() {
@@ -2808,6 +2853,7 @@ function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
   var thr = vh && vh.blackKeyThreshold != null ? parseInt(vh.blackKeyThreshold, 10) : 16;
   entry.iosBlackKeySoft = 0;
   entry.iosScreenCanvasKey = true;
+  entry.iosMatteScale = 2;
   function paint() { paintGuideCanvasOnce(entry, thr); }
   vid.addEventListener('loadeddata', paint);
   vid.addEventListener('seeked', paint);
@@ -2860,8 +2906,11 @@ function syncGuideCanvasSize(entry) {
   if (!entry || !entry.guideCanvas || !entry.wrap) return;
   var w = entry.overlayDrawW || parseInt(entry.wrap.style.width, 10) || entry.overlayW || 280;
   var h = entry.overlayDrawH || parseInt(entry.wrap.style.height, 10) || entry.overlayH || 380;
-  if (entry.guideCanvas.width !== w) entry.guideCanvas.width = w;
-  if (entry.guideCanvas.height !== h) entry.guideCanvas.height = h;
+  var scale = guideIosMattePixelScale(entry);
+  var cw = Math.max(1, Math.round(w * scale));
+  var ch = Math.max(1, Math.round(h * scale));
+  if (entry.guideCanvas.width !== cw) entry.guideCanvas.width = cw;
+  if (entry.guideCanvas.height !== ch) entry.guideCanvas.height = ch;
 }
 
 function paintGuideCanvasOnce(entry, threshold) {
