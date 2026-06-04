@@ -1059,7 +1059,29 @@ var APP_DATA = {
       ],
       "infoHotspots": [],
       "position": 3,
-      "course": "cc"
+      "course": "cc",
+      "videoHotspots": [
+        {
+          "src": "video/guide_alpha.webm",
+          "yaw": 28.7,
+          "pitch": 18.6,
+          "width": 540,
+          "height": 567,
+          "radius": 850,
+          "fade": 0,
+          "fadeBottom": 10,
+          "fullscreen": false,
+          "objectFit": "contain",
+          "tone": {
+            "brightness": 0.96,
+            "contrast": 0.94,
+            "saturate": 0.88
+          },
+          "autoplay": true,
+          "loop": false,
+          "fadeInMs": 0
+        }
+      ]
     }
   ],
   "name": "Local 1024tiles"
