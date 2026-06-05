@@ -1065,14 +1065,11 @@ var APP_DATA = {
           "src": "video/guide_alpha.webm",
           "yaw": 28.7,
           "pitch": 18.6,
-          "width": 872,
-          "height": 916,
+          "width": 794,
+          "height": 834,
           "radius": 850,
           "fade": 0,
           "fadeBottom": 0,
-          "footShadow": true,
-          "footShadowStrength": 0.36,
-          "footShadowHeight": 13,
           "fullscreen": false,
           "objectFit": "contain",
           "tone": {
@@ -1080,16 +1077,10 @@ var APP_DATA = {
             "contrast": 1.12,
             "saturate": 0.88
           },
-          "blackKeyThreshold": 16,
-          "blackKeySoft": 20,
-          "iosAnchorY": 0.52,
-          "iosOverlayOffsetY": 10,
-          "iosMaxWidthPct": 0.75,
           "autoplay": true,
           "loop": false,
           "fadeInMs": 0,
-          "srcIos": "video/guide_alpha_ios.mp4",
-          "srcHevc": "video/ipad.mp4"
+          "srcIos": "video/guide_alpha_ios.mp4"
         }
       ]
     }
