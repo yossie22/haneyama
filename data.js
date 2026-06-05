@@ -1071,9 +1071,6 @@ var APP_DATA = {
           "fade": 0,
           "fadeBottom": 0,
           "footShadow": false,
-          "iosAnchorY": 0.6,
-          "iosOverlayOffsetY": 22,
-          "iosPitchOffset": 0.05,
           "fullscreen": false,
           "objectFit": "contain",
           "tone": {

@@ -872,7 +872,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm23';
+var BUILD_STAMP = '2026-06-05-ipadm24';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2345,14 +2345,14 @@ function videoHotspotSrcUrl(rawSrc) {
 }
 
 /** WebM の透過は Chrome 向け。iPad/Safari は HEVC（hvc1）が必須。 */
-/** iPad表示方式。srcHevc（ipad.mp4）があるときは画面固定で透過表示（黒四角を防ぐ） */
+/** iPad表示方式。srcHevc（ipad.mp4）あり → ホットスポット（PC同様・ピタ追従）。無いときだけ画面固定 */
 function guideIosUseScreenOverlay(vh) {
   try {
     var q = new URLSearchParams(window.location.search);
     if (q.get('iosOverlay') === '1') return true;
     if (q.get('iosOverlay') === '0') return false;
   } catch (e0) {}
-  if (vh && vh.srcHevc) return true;
+  if (vh && vh.srcHevc) return false;
   if (vh && vh.iosScreenOverlay === true) return true;
   if (vh && vh.iosScreenOverlay === false) return false;
   return true;
@@ -3110,6 +3110,13 @@ function bindIOSGuideVideoKick() {
 
 function applyGuideVideoMatte(vid, maskWrap, vh, entry) {
   if (!vid || !maskWrap) return;
+  if (entry && guideDeviceIsIosSafari() && vh && vh.srcHevc) {
+    applyVideoHotspotObjectFit(vid, vh);
+    applyVideoHotspotTone(vid, vh.tone);
+    probeGuideVideoNativeAlpha(vid, maskWrap, entry);
+    ensureGuideVideoPlays(entry);
+    return;
+  }
   if (entry && setupGuideIosLightenMatte(vid, maskWrap, vh, entry)) return;
   if (entry && setupGuideCanvasBlackKey(vid, maskWrap, vh, entry)) return;
   maskWrap.classList.add('guide-matte-lighten');
@@ -3370,7 +3377,9 @@ function attachVideoHotspots(sceneId, sceneData) {
       return;
     }
     if (guideDeviceIsIosSafari()) {
-      console.log('🎬 iPad: パノラマホットスポット（HEVC透過→なければMP4）');
+      console.log(vh.srcHevc
+        ? '🎬 iPad: パノラマホットスポット（透過ipad・ピタ追従）'
+        : '🎬 iPad: パノラマホットスポット');
     }
     if (Math.abs(parseFloat(vh.pitch)) > 45) {
       console.warn('🎬 pitch=' + vh.pitch + '° は大きすぎて見えないことが多いです。8〜15 前後を推奨');
