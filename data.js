@@ -1108,7 +1108,7 @@ var APP_DATA = {
           "fadeInMs": 0,
           "autoplay": false,
           "playOnView": true,
-          "playYawRange": 35,
+          "playYawRange": 18,
           "srcIos": "video/guide_alpha_ios.mp4",
           "srcHevc": "video/ipad.mp4",
           "footShadow": false
