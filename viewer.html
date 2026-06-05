@@ -351,21 +351,14 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 .scene-video-ground-shadow {
   display: none;
 }
-/* 全作品共通：足元のぼんやりした接触影（PC・iPad・歩行動画でも足元だけ追従） */
-.scene-video-2d-wrap.scene-video-foot-shadow-on,
-.guide-ios-screen-overlay.guide-ios-foot-shadow {
-  overflow: visible;
-}
-.scene-video-foot-contact {
+/* 全作品共通：足元のごく薄いフェード（楕円・multiply は iPad で境目が出るため使わない） */
+.scene-video-foot-fade {
   position: absolute;
-  left: 50%;
-  bottom: -2%;
-  width: 88%;
-  transform: translateX(-50%);
+  left: 0;
+  bottom: 0;
+  width: 100%;
   pointer-events: none;
-  z-index: 3;
-  border-radius: 50%;
-  will-change: filter;
+  z-index: 2;
 }
 .scene-video-mask { z-index: 1; }
 
@@ -879,7 +872,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm22';
+var BUILD_STAMP = '2026-06-05-ipadm23';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2112,7 +2105,8 @@ function updateAllGuideIosOverlays() {
       entry.iosOverlayEl.style.display = 'none';
       return;
     }
-    var scr = guideCoordsToScreenApprox(entry.placeYaw, entry.placePitch);
+    var pitchOff = entry.iosPitchOffset != null ? entry.iosPitchOffset : 0;
+    var scr = guideCoordsToScreenApprox(entry.placeYaw, entry.placePitch + pitchOff);
     var el = entry.iosOverlayEl;
     var panoW = panoRect.width || panoElement.clientWidth || window.innerWidth;
     var panoH = panoRect.height || panoElement.clientHeight || window.innerHeight;
@@ -2164,6 +2158,11 @@ function rebindGuideIosViewListener() {
 function bindGuideIosOverlayTracking() {
   if (!guideDeviceIsIosSafari() || window.guideIosOverlayRaf) return;
   rebindGuideIosViewListener();
+  if (!window._guideIosOverlayTouchBound && panoElement) {
+    window._guideIosOverlayTouchBound = true;
+    panoElement.addEventListener('touchmove', updateAllGuideIosOverlays, { passive: true });
+    panoElement.addEventListener('mousemove', updateAllGuideIosOverlays, { passive: true });
+  }
   function tick() {
     updateAllGuideIosOverlays();
     window.guideIosOverlayRaf = requestAnimationFrame(tick);
@@ -2190,8 +2189,8 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   vid.preload = 'auto';
   vid.autoplay = vh.autoplay !== false;
   maskWrap.appendChild(vid);
+  applyGuideFootContactShadow(maskWrap, vh);
   box.appendChild(maskWrap);
-  applyGuideFootContactShadow(box, vh);
   root.appendChild(box);
   var entry = {
     vid: vid,
@@ -2552,50 +2551,34 @@ function guideFootShadowEnabled(vh) {
 }
 
 function guideFootShadowStyle(vh) {
-  var op = 0.22;
+  var op = 0.1;
   if (vh.footShadowStrength != null) op = parseFloat(vh.footShadowStrength);
   else if (vh.groundShadowStrength != null) op = parseFloat(vh.groundShadowStrength);
-  var h = 18;
+  var h = 11;
   if (vh.footShadowHeight != null) h = parseInt(vh.footShadowHeight, 10);
   else if (vh.groundShadowHeight != null) h = parseInt(vh.groundShadowHeight, 10);
-  var blur = 14;
-  if (vh.footShadowBlur != null) blur = parseInt(vh.footShadowBlur, 10);
   return {
-    opacity: Math.max(0.06, Math.min(0.45, op)),
-    heightPct: Math.max(8, Math.min(32, h)),
-    blurPx: Math.max(6, Math.min(28, blur))
+    opacity: Math.max(0.03, Math.min(0.2, op)),
+    heightPct: Math.max(6, Math.min(20, h))
   };
 }
 
-/** 動画ホットスポット足元にぼかし付きの薄い影（動画と一緒に動く） */
-function applyGuideFootContactShadow(parentEl, vh) {
-  if (!parentEl || !guideFootShadowEnabled(vh)) return;
-  parentEl.classList.add(parentEl.classList.contains('guide-ios-screen-overlay')
-    ? 'guide-ios-foot-shadow' : 'scene-video-foot-shadow-on');
-  var olds = parentEl.querySelectorAll('.scene-video-foot-contact');
+/** 足元に幅いっぱいの薄いフェードだけ（楕円影は iPad で境目が出やすい） */
+function applyGuideFootContactShadow(maskWrap, vh) {
+  if (!maskWrap || !guideFootShadowEnabled(vh)) return;
+  var olds = maskWrap.querySelectorAll('.scene-video-foot-fade, .scene-video-foot-contact');
   for (var i = 0; i < olds.length; i++) {
     if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
   }
+  if (vh.footShadowMode === 'ellipse') return;
   var st = guideFootShadowStyle(vh);
   var el = document.createElement('div');
-  el.className = 'scene-video-foot-contact';
+  el.className = 'scene-video-foot-fade';
   el.setAttribute('aria-hidden', 'true');
   el.style.height = st.heightPct + '%';
-  el.style.width = '92%';
-  var blur = 'blur(' + st.blurPx + 'px)';
-  el.style.filter = blur;
-  el.style.webkitFilter = blur;
-  el.style.mixBlendMode = 'multiply';
-  el.style.webkitMixBlendMode = 'multiply';
   var a = st.opacity;
-  el.style.background = 'radial-gradient(ellipse 110% 85% at 50% 88%, ' +
-    'rgba(0,0,0,' + a + ') 0%, ' +
-    'rgba(0,0,0,' + (a * 0.72) + ') 14%, ' +
-    'rgba(0,0,0,' + (a * 0.48) + ') 30%, ' +
-    'rgba(0,0,0,' + (a * 0.26) + ') 48%, ' +
-    'rgba(0,0,0,' + (a * 0.1) + ') 64%, ' +
-    'transparent 82%)';
-  parentEl.appendChild(el);
+  el.style.background = 'linear-gradient(to top, rgba(0,0,0,' + a + ') 0%, rgba(0,0,0,' + (a * 0.35) + ') 38%, rgba(0,0,0,' + (a * 0.08) + ') 68%, transparent 100%)';
+  maskWrap.appendChild(el);
 }
 
 function applySceneVideoMask(maskWrap, bottomFadePct) {
@@ -2792,8 +2775,9 @@ function applyGuideBlackKeyToEntry(entry, vh) {
   var bk = guideBlackKeyParams(vh);
   entry.blackKeyThr = bk.thr;
   entry.blackKeySoft = bk.soft;
-  entry.iosAnchorY = vh && vh.iosAnchorY != null ? parseFloat(vh.iosAnchorY) : 0.52;
+  entry.iosAnchorY = vh && vh.iosAnchorY != null ? parseFloat(vh.iosAnchorY) : 0.6;
   entry.iosOverlayOffsetY = vh && vh.iosOverlayOffsetY != null ? parseInt(vh.iosOverlayOffsetY, 10) : 0;
+  entry.iosPitchOffset = vh && vh.iosPitchOffset != null ? parseFloat(vh.iosPitchOffset) : 0;
   entry.iosMaxWidthPct = vh && vh.iosMaxWidthPct != null ? parseFloat(vh.iosMaxWidthPct) : 0.72;
 }
 
@@ -3365,8 +3349,8 @@ function attachVideoHotspots(sceneId, sceneData) {
       vid.muted = true;
     }
     maskWrap.appendChild(vid);
+    applyGuideFootContactShadow(maskWrap, vh);
     wrap.appendChild(maskWrap);
-    applyGuideFootContactShadow(wrap, vh);
     var entry = { vid: vid, wrap: wrap, maskWrap: maskWrap, sceneId: sceneId, guidePlaybackDone: false };
     applyGuideVideoMatte(vid, maskWrap, vh, entry);
     if (vh.mask !== false) {
