@@ -858,7 +858,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm18';
+var BUILD_STAMP = '2026-06-05-ipadm19';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2320,7 +2320,7 @@ function videoHotspotSrcUrl(rawSrc) {
 }
 
 /** WebM の透過は Chrome 向け。iPad/Safari は HEVC（hvc1）が必須。 */
-/** iPad で画面固定オーバーレイ＋Canvas黒抜きを使うか（旧方式）。既定は false＝ホットスポット優先 */
+/** iPad表示方式。MP4だけのときは画面固定＋Canvas（黒四角を防ぐ）。HEVC透過を置いた作品だけホットスポット可 */
 function guideIosUseScreenOverlay(vh) {
   try {
     var q = new URLSearchParams(window.location.search);
@@ -2328,8 +2328,8 @@ function guideIosUseScreenOverlay(vh) {
     if (q.get('iosOverlay') === '0') return false;
   } catch (e0) {}
   if (vh && vh.iosScreenOverlay === true) return true;
-  if (vh && vh.iosScreenOverlay === false) return false;
-  return false;
+  if (vh && vh.iosScreenOverlay === false && vh.srcHevc) return false;
+  return true;
 }
 
 function guideIosMp4Src(vh) {
