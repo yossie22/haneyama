@@ -807,6 +807,29 @@ var APP_DATA = {
           "playVideoOnTap": true,
           "videoLoop": false
         }
+      ],
+      "videoHotspots": [
+        {
+          "src": "video/guide_alpha.webm",
+          "yaw": 260.7,
+          "pitch": 28.8,
+          "width": 1405,
+          "height": 1476,
+          "radius": 850,
+          "fade": 0,
+          "fadeBottom": 20,
+          "fullscreen": false,
+          "objectFit": "contain",
+          "tone": {
+            "brightness": 0.85,
+            "contrast": 1.12,
+            "saturate": 0.88
+          },
+          "autoplay": true,
+          "loop": false,
+          "fadeInMs": 0,
+          "srcIos": "video/guide_alpha_ios.mp4"
+        }
       ]
     },
     {
