@@ -1085,7 +1085,8 @@ var APP_DATA = {
           "autoplay": true,
           "loop": false,
           "fadeInMs": 0,
-          "srcIos": "video/guide_alpha_ios.mp4"
+          "srcIos": "video/guide_alpha_ios.mp4",
+          "srcHevc": "video/guide_alpha_hevc.mov"
         }
       ]
     }
