@@ -351,16 +351,21 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 .scene-video-ground-shadow {
   display: none;
 }
-/* 全作品共通：足元だけ薄い接触影（浮いて見えるのを抑える） */
+/* 全作品共通：足元のぼんやりした接触影（PC・iPad・歩行動画でも足元だけ追従） */
+.scene-video-2d-wrap.scene-video-foot-shadow-on,
+.guide-ios-screen-overlay.guide-ios-foot-shadow {
+  overflow: visible;
+}
 .scene-video-foot-contact {
   position: absolute;
   left: 50%;
-  bottom: 0;
-  width: 76%;
+  bottom: -2%;
+  width: 88%;
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 3;
   border-radius: 50%;
+  will-change: filter;
 }
 .scene-video-mask { z-index: 1; }
 
@@ -874,7 +879,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm21';
+var BUILD_STAMP = '2026-06-05-ipadm22';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2185,8 +2190,8 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   vid.preload = 'auto';
   vid.autoplay = vh.autoplay !== false;
   maskWrap.appendChild(vid);
-  applyGuideFootContactShadow(maskWrap, vh);
   box.appendChild(maskWrap);
+  applyGuideFootContactShadow(box, vh);
   root.appendChild(box);
   var entry = {
     vid: vid,
@@ -2547,21 +2552,26 @@ function guideFootShadowEnabled(vh) {
 }
 
 function guideFootShadowStyle(vh) {
-  var op = 0.38;
+  var op = 0.22;
   if (vh.footShadowStrength != null) op = parseFloat(vh.footShadowStrength);
   else if (vh.groundShadowStrength != null) op = parseFloat(vh.groundShadowStrength);
-  var h = 14;
+  var h = 18;
   if (vh.footShadowHeight != null) h = parseInt(vh.footShadowHeight, 10);
   else if (vh.groundShadowHeight != null) h = parseInt(vh.groundShadowHeight, 10);
+  var blur = 14;
+  if (vh.footShadowBlur != null) blur = parseInt(vh.footShadowBlur, 10);
   return {
-    opacity: Math.max(0.08, Math.min(0.72, op)),
-    heightPct: Math.max(5, Math.min(30, h))
+    opacity: Math.max(0.06, Math.min(0.45, op)),
+    heightPct: Math.max(8, Math.min(32, h)),
+    blurPx: Math.max(6, Math.min(28, blur))
   };
 }
 
-/** 動画ホットスポット足元に薄い楕円影（PC・iPad共通） */
+/** 動画ホットスポット足元にぼかし付きの薄い影（動画と一緒に動く） */
 function applyGuideFootContactShadow(parentEl, vh) {
   if (!parentEl || !guideFootShadowEnabled(vh)) return;
+  parentEl.classList.add(parentEl.classList.contains('guide-ios-screen-overlay')
+    ? 'guide-ios-foot-shadow' : 'scene-video-foot-shadow-on');
   var olds = parentEl.querySelectorAll('.scene-video-foot-contact');
   for (var i = 0; i < olds.length; i++) {
     if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
@@ -2571,9 +2581,20 @@ function applyGuideFootContactShadow(parentEl, vh) {
   el.className = 'scene-video-foot-contact';
   el.setAttribute('aria-hidden', 'true');
   el.style.height = st.heightPct + '%';
+  el.style.width = '92%';
+  var blur = 'blur(' + st.blurPx + 'px)';
+  el.style.filter = blur;
+  el.style.webkitFilter = blur;
+  el.style.mixBlendMode = 'multiply';
+  el.style.webkitMixBlendMode = 'multiply';
   var a = st.opacity;
-  var b = st.opacity * 0.28;
-  el.style.background = 'radial-gradient(ellipse 82% 100% at 50% 100%, rgba(0,0,0,' + a + ') 0%, rgba(0,0,0,' + b + ') 52%, transparent 100%)';
+  el.style.background = 'radial-gradient(ellipse 110% 85% at 50% 88%, ' +
+    'rgba(0,0,0,' + a + ') 0%, ' +
+    'rgba(0,0,0,' + (a * 0.72) + ') 14%, ' +
+    'rgba(0,0,0,' + (a * 0.48) + ') 30%, ' +
+    'rgba(0,0,0,' + (a * 0.26) + ') 48%, ' +
+    'rgba(0,0,0,' + (a * 0.1) + ') 64%, ' +
+    'transparent 82%)';
   parentEl.appendChild(el);
 }
 
@@ -3344,15 +3365,14 @@ function attachVideoHotspots(sceneId, sceneData) {
       vid.muted = true;
     }
     maskWrap.appendChild(vid);
-    applyGuideFootContactShadow(maskWrap, vh);
+    wrap.appendChild(maskWrap);
+    applyGuideFootContactShadow(wrap, vh);
     var entry = { vid: vid, wrap: wrap, maskWrap: maskWrap, sceneId: sceneId, guidePlaybackDone: false };
     applyGuideVideoMatte(vid, maskWrap, vh, entry);
     if (vh.mask !== false) {
       var featherPct0 = vh.fadeBottom !== undefined ? parseInt(vh.fadeBottom, 10) : 0;
       applySceneVideoMask(maskWrap, featherPct0);
     }
-    wrap.appendChild(maskWrap);
-
     if (vh.loop !== true) {
       wrap.style.pointerEvents = 'none';
     }
