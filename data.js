@@ -810,25 +810,29 @@ var APP_DATA = {
       ],
       "videoHotspots": [
         {
-          "src": "video/guide_alpha.webm",
-          "yaw": 260.7,
-          "pitch": 28.8,
-          "width": 1405,
-          "height": 1476,
+          "src": "video/海軍.webm",
+          "yaw": -165,
+          "pitch": 10,
+          "width": 560,
+          "height": 760,
           "radius": 850,
           "fade": 0,
-          "fadeBottom": 20,
+          "fadeBottom": 16,
           "fullscreen": false,
           "objectFit": "contain",
           "tone": {
-            "brightness": 0.85,
+            "brightness": 0.9,
             "contrast": 1.12,
             "saturate": 0.88
           },
-          "autoplay": true,
           "loop": false,
           "fadeInMs": 0,
-          "srcIos": "video/guide_alpha_ios.mp4"
+          "autoplay": false,
+          "playOnView": true,
+          "playYawRange": 35,
+          "srcIos": "video/guide_alpha_ios.mp4",
+          "srcHevc": "video/ipad2.mp4",
+          "footShadow": false
         }
       ]
     },
@@ -1086,14 +1090,13 @@ var APP_DATA = {
       "videoHotspots": [
         {
           "src": "video/guide_alpha.webm",
-          "yaw": 28.7,
-          "pitch": 18.6,
-          "width": 794,
-          "height": 834,
+          "yaw": 287.7,
+          "pitch": 16.9,
+          "width": 1048,
+          "height": 1101,
           "radius": 850,
           "fade": 0,
           "fadeBottom": 0,
-          "footShadow": false,
           "fullscreen": false,
           "objectFit": "contain",
           "tone": {
@@ -1101,11 +1104,14 @@ var APP_DATA = {
             "contrast": 1.12,
             "saturate": 0.88
           },
-          "autoplay": true,
           "loop": false,
           "fadeInMs": 0,
+          "autoplay": false,
+          "playOnView": true,
+          "playYawRange": 35,
           "srcIos": "video/guide_alpha_ios.mp4",
-          "srcHevc": "video/ipad.mp4"
+          "srcHevc": "video/ipad.mp4",
+          "footShadow": false
         }
       ]
     }

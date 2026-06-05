@@ -872,7 +872,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm24';
+var BUILD_STAMP = '2026-06-05-ipadm25';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2212,7 +2212,7 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
     setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry);
     console.log('🎬 iPad: Canvas黒抜き（画面固定）');
   }
-  setupGuideVideoPlayback(vid, vh, sceneId, entry);
+  setupGuideVideoPlayback(vid, vh, sceneId, entry, currentScene ? currentScene.view() : null);
   window.sceneVideoEls.push(entry);
   bindGuideIosOverlayTracking();
   updateAllGuideIosOverlays();
@@ -2237,6 +2237,7 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
 function destroySceneVideoHotspots(handles) {
   destroyGuideIosOverlayRoot();
   (window.sceneVideoEls || []).forEach(function(item) {
+    cleanupGuideViewPlayListener(item);
     stopGuideCanvasMatte(item);
   });
   var list = handles || window.sceneVideoHotspotHandles || [];
@@ -2459,7 +2460,118 @@ function seekGuideVideoToLastFrame(vid) {
   else vid.addEventListener('loadedmetadata', seek, { once: true });
 }
 
-function setupGuideVideoPlayback(vid, vh, sceneId, entry) {
+function normYawDeg(y) {
+  var n = ((parseFloat(y) % 360) + 360) % 360;
+  if (n > 180) n -= 360;
+  return n;
+}
+
+function yawDeltaDeg(a, b) {
+  var d = Math.abs(normYawDeg(a) - normYawDeg(b));
+  return d > 180 ? 360 - d : d;
+}
+
+function guideUsePlayOnView(vh) {
+  if (!vh) return false;
+  if (vh.playOnView === true) return true;
+  if (vh.playOnView === false) return false;
+  var yaw = parseFloat(vh.yaw);
+  if (!isNaN(yaw) && Math.abs(normYawDeg(yaw)) > 12) return true;
+  return false;
+}
+
+function guidePlayYawCenter(vh) {
+  if (vh.playYawCenter != null && isFinite(vh.playYawCenter)) return parseFloat(vh.playYawCenter);
+  return parseFloat(vh.yaw) || 0;
+}
+
+function guidePlayYawRange(vh) {
+  if (vh.playYawRange != null && isFinite(vh.playYawRange)) return Math.max(5, parseFloat(vh.playYawRange));
+  return 35;
+}
+
+function cleanupGuideViewPlayListener(entry) {
+  if (!entry || !entry.guideViewPlayCleanup) return;
+  try { entry.guideViewPlayCleanup(); } catch (e0) {}
+  entry.guideViewPlayCleanup = null;
+  entry.guideViewPlayListener = null;
+  entry.guideViewRef = null;
+}
+
+function setupGuidePlacerPreviewPlayback(vid, vh, entry) {
+  entry.guidePlaybackDone = false;
+  vid.loop = true;
+  vid.muted = true;
+  vid.autoplay = false;
+  function loopPlay() {
+    try { vid.currentTime = 0; } catch (e0) {}
+    var p = vid.play();
+    if (p && p.catch) p.catch(function() {});
+    paintGuideCanvasOnce(entry);
+  }
+  vid.addEventListener('loadeddata', loopPlay, { once: true });
+  if (vid.readyState >= 2) loopPlay();
+}
+
+function setupGuideViewTriggeredPlayback(vid, vh, sceneId, entry, view) {
+  var center = guidePlayYawCenter(vh);
+  var range = guidePlayYawRange(vh);
+  var triggered = false;
+
+  function holdFirstFrame() {
+    try {
+      vid.pause();
+      vid.currentTime = 0;
+    } catch (e1) {}
+    paintGuideCanvasOnce(entry);
+  }
+
+  function tryPlayOnView() {
+    if (!view || entry.guidePlaybackDone || triggered) return;
+    var vy = radToDeg(view.yaw());
+    if (yawDeltaDeg(vy, center) > range) return;
+    triggered = true;
+    vid.muted = true;
+    try { vid.currentTime = 0; } catch (e2) {}
+    var p = vid.play();
+    if (p && p.catch) p.catch(function() {});
+  }
+
+  vid.addEventListener('ended', function() {
+    if (vh.loop === true) return;
+    finishGuidePlayback(vid, sceneId, entry);
+  }, { once: true });
+
+  if (vh.loop !== true && guideDeviceIsIosSafari()) {
+    vid.addEventListener('timeupdate', function() {
+      if (entry.guidePlaybackDone || !vid.duration || vid.duration < 0.2) return;
+      if (vid.currentTime >= vid.duration - 0.12) {
+        finishGuidePlayback(vid, sceneId, entry);
+      }
+    });
+  }
+
+  vid.addEventListener('loadeddata', holdFirstFrame, { once: true });
+  if (vid.readyState >= 2) holdFirstFrame();
+
+  entry.guideViewRef = view;
+  entry.guideViewPlayListener = tryPlayOnView;
+  entry.guideViewPlayCleanup = function() {
+    if (view && tryPlayOnView) view.removeEventListener('change', tryPlayOnView);
+  };
+  if (view) {
+    view.addEventListener('change', tryPlayOnView);
+    tryPlayOnView();
+  }
+}
+
+function setupGuideVideoPlayback(vid, vh, sceneId, entry, view) {
+  cleanupGuideViewPlayListener(entry);
+  if (embedPlacerMode) {
+    setupGuidePlacerPreviewPlayback(vid, vh, entry);
+    return;
+  }
+
   var loop = vh.loop === true;
   entry.guidePlaybackDone = !loop && guideVideoSessionDone[sceneId] === true;
 
@@ -2469,6 +2581,11 @@ function setupGuideVideoPlayback(vid, vh, sceneId, entry) {
       seekGuideVideoToLastFrame(vid);
       paintGuideCanvasOnce(entry);
     }, { once: true });
+    return;
+  }
+
+  if (guideUsePlayOnView(vh) && view) {
+    setupGuideViewTriggeredPlayback(vid, vh, sceneId, entry, view);
     return;
   }
 
@@ -2496,7 +2613,7 @@ function setupGuideVideoPlayback(vid, vh, sceneId, entry) {
     });
   }
 
-  if (vh.autoplay) {
+  if (vh.autoplay !== false) {
     vid.addEventListener('loadeddata', function() {
       tryPlayOnce();
       paintGuideCanvasOnce(entry);
@@ -3311,8 +3428,17 @@ if (embedPlacerMode) {
   startPlacerPreviewPolling();
   window.addEventListener('message', function(ev) {
     var d = ev.data;
-    if (!d || d.type !== 'placerPreviewHotspot') return;
-    applyPlacerPreviewHotspot(d.hotspot, d.sceneId);
+    if (!d) return;
+    if (d.type === 'placerPreviewHotspot') {
+      applyPlacerPreviewHotspot(d.hotspot, d.sceneId);
+      return;
+    }
+    if (d.type === 'placerLookAtGuide' && currentScene && currentScene.view()) {
+      var params = currentScene.view().parameters();
+      params.yaw = degToRad(parseFloat(d.yaw) || 0);
+      if (d.pitch != null && isFinite(d.pitch)) params.pitch = degToRad(parseFloat(d.pitch));
+      currentScene.view().setParameters(params);
+    }
   });
 }
 
@@ -3394,7 +3520,7 @@ function attachVideoHotspots(sceneId, sceneData) {
     console.log('🎬 ガイド配置: ' + sceneId +
       ' yaw=' + vh.yaw + '° pitch=' + vh.pitch + '° size=' + w + 'x' + h + ' radius=' + radius +
       ' （1回再生・終了後は静止画）');
-    setupGuideVideoPlayback(vid, vh, sceneId, entry);
+    setupGuideVideoPlayback(vid, vh, sceneId, entry, currentScene.view());
     vid.addEventListener('error', function() {
       var hevcHint = guideVideoHevcSrc(vh.src, vh);
       console.error('🎬 動画読込失敗: ' + vh.src + (hevcHint ? ' / ' + hevcHint : ''), vid.error);
