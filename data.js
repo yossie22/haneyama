@@ -1069,7 +1069,10 @@ var APP_DATA = {
           "height": 916,
           "radius": 850,
           "fade": 0,
-          "fadeBottom": 10,
+          "fadeBottom": 0,
+          "footShadow": true,
+          "footShadowStrength": 0.36,
+          "footShadowHeight": 13,
           "fullscreen": false,
           "objectFit": "contain",
           "tone": {
@@ -1086,8 +1089,7 @@ var APP_DATA = {
           "loop": false,
           "fadeInMs": 0,
           "srcIos": "video/guide_alpha_ios.mp4",
-          "srcHevc": "video/ipad.mp4",
-          "iosScreenOverlay": false
+          "srcHevc": "video/ipad.mp4"
         }
       ]
     }

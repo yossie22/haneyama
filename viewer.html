@@ -309,10 +309,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 .guide-ios-screen-overlay.guide-img-matte {
   mix-blend-mode: normal;
 }
-.guide-ios-screen-overlay.guide-ios-canvas-matte {
+.guide-ios-screen-overlay.guide-ios-canvas-matte,
+.guide-ios-screen-overlay.guide-ios-native-alpha {
   mix-blend-mode: normal;
   background: transparent !important;
   isolation: isolate;
+}
+.guide-ios-screen-overlay.guide-ios-native-alpha video.scene-video-2d {
+  opacity: 1 !important;
+  mix-blend-mode: normal;
 }
 .guide-ios-screen-overlay.guide-ios-canvas-matte .scene-video-mask {
   background: transparent;
@@ -345,6 +350,17 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 }
 .scene-video-ground-shadow {
   display: none;
+}
+/* 全作品共通：足元だけ薄い接触影（浮いて見えるのを抑える） */
+.scene-video-foot-contact {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 76%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 3;
+  border-radius: 50%;
 }
 .scene-video-mask { z-index: 1; }
 
@@ -858,7 +874,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm19';
+var BUILD_STAMP = '2026-06-05-ipadm21';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2169,6 +2185,7 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   vid.preload = 'auto';
   vid.autoplay = vh.autoplay !== false;
   maskWrap.appendChild(vid);
+  applyGuideFootContactShadow(maskWrap, vh);
   box.appendChild(maskWrap);
   root.appendChild(box);
   var entry = {
@@ -2185,12 +2202,16 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
     guidePlaybackDone: false
   };
   applyGuideBlackKeyToEntry(entry, vh);
-  setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry);
+  if (vh && vh.srcHevc) {
+    setupGuideIosScreenNativeAlpha(vid, maskWrap, vh, entry);
+  } else {
+    setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry);
+    console.log('🎬 iPad: Canvas黒抜き（画面固定）');
+  }
   setupGuideVideoPlayback(vid, vh, sceneId, entry);
   window.sceneVideoEls.push(entry);
   bindGuideIosOverlayTracking();
   updateAllGuideIosOverlays();
-  console.log('🎬 iPad: Canvas黒抜き（画面固定）');
   vid.addEventListener('error', function onIosVidErr() {
     console.warn('🎬 iPad 動画失敗、別形式を試します:', vid.src, vid.error);
     var webm = videoHotspotSrcUrl(vh.src);
@@ -2320,15 +2341,16 @@ function videoHotspotSrcUrl(rawSrc) {
 }
 
 /** WebM の透過は Chrome 向け。iPad/Safari は HEVC（hvc1）が必須。 */
-/** iPad表示方式。MP4だけのときは画面固定＋Canvas（黒四角を防ぐ）。HEVC透過を置いた作品だけホットスポット可 */
+/** iPad表示方式。srcHevc（ipad.mp4）があるときは画面固定で透過表示（黒四角を防ぐ） */
 function guideIosUseScreenOverlay(vh) {
   try {
     var q = new URLSearchParams(window.location.search);
     if (q.get('iosOverlay') === '1') return true;
     if (q.get('iosOverlay') === '0') return false;
   } catch (e0) {}
+  if (vh && vh.srcHevc) return true;
   if (vh && vh.iosScreenOverlay === true) return true;
-  if (vh && vh.iosScreenOverlay === false && vh.srcHevc) return false;
+  if (vh && vh.iosScreenOverlay === false) return false;
   return true;
 }
 
@@ -2356,6 +2378,10 @@ function appendGuideVideoSources(vid, vh) {
   var webmUrl = videoHotspotSrcUrl(vh.src);
   if (guideDeviceIsIosSafari()) {
     var hevcIos = guideVideoHevcSrc(vh.src, vh);
+    if (vh.srcHevc && hevcIos) {
+      vid.src = videoHotspotSrcUrl(hevcIos);
+      return;
+    }
     if (hevcIos) {
       var sHevcIos = document.createElement('source');
       sHevcIos.src = videoHotspotSrcUrl(hevcIos);
@@ -2516,6 +2542,41 @@ function runVideoHotspotFadeIn(wrap, fadeMs) {
   });
 }
 
+function guideFootShadowEnabled(vh) {
+  return !!(vh && (vh.footShadow === true || vh.groundShadow === true));
+}
+
+function guideFootShadowStyle(vh) {
+  var op = 0.38;
+  if (vh.footShadowStrength != null) op = parseFloat(vh.footShadowStrength);
+  else if (vh.groundShadowStrength != null) op = parseFloat(vh.groundShadowStrength);
+  var h = 14;
+  if (vh.footShadowHeight != null) h = parseInt(vh.footShadowHeight, 10);
+  else if (vh.groundShadowHeight != null) h = parseInt(vh.groundShadowHeight, 10);
+  return {
+    opacity: Math.max(0.08, Math.min(0.72, op)),
+    heightPct: Math.max(5, Math.min(30, h))
+  };
+}
+
+/** 動画ホットスポット足元に薄い楕円影（PC・iPad共通） */
+function applyGuideFootContactShadow(parentEl, vh) {
+  if (!parentEl || !guideFootShadowEnabled(vh)) return;
+  var olds = parentEl.querySelectorAll('.scene-video-foot-contact');
+  for (var i = 0; i < olds.length; i++) {
+    if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
+  }
+  var st = guideFootShadowStyle(vh);
+  var el = document.createElement('div');
+  el.className = 'scene-video-foot-contact';
+  el.setAttribute('aria-hidden', 'true');
+  el.style.height = st.heightPct + '%';
+  var a = st.opacity;
+  var b = st.opacity * 0.28;
+  el.style.background = 'radial-gradient(ellipse 82% 100% at 50% 100%, rgba(0,0,0,' + a + ') 0%, rgba(0,0,0,' + b + ') 52%, transparent 100%)';
+  parentEl.appendChild(el);
+}
+
 function applySceneVideoMask(maskWrap, bottomFadePct) {
   if (!maskWrap) return;
   var bottom = Math.max(0, Math.min(40, parseInt(bottomFadePct, 10) || 0));
@@ -2613,6 +2674,53 @@ function startGuideIosScreenCanvasPaint(entry, thr) {
       entry.iosVfcId = entry.vid.requestVideoFrameCallback(onFrame);
     });
   }
+}
+
+function setupGuideIosScreenNativeAlpha(vid, maskWrap, vh, entry) {
+  if (!vid || !maskWrap || !entry) return false;
+  entry.iosUseNativeVideo = true;
+  entry.wrap.classList.remove('guide-ios-canvas-matte', 'guide-img-matte');
+  entry.wrap.classList.add('guide-ios-native-alpha');
+  maskWrap.classList.remove('guide-matte-lighten', 'guide-canvas-matte', 'guide-img-matte');
+  maskWrap.style.background = 'transparent';
+  var oldC = maskWrap.querySelector('canvas.guide-video-canvas');
+  if (oldC && oldC.parentNode) oldC.parentNode.removeChild(oldC);
+  vid.style.cssText = 'display:block;width:100%;height:100%;opacity:1;pointer-events:none';
+  applyVideoHotspotObjectFit(vid, vh);
+  applyVideoHotspotTone(vid, vh.tone);
+  var canvasFallback = false;
+  function useCanvasFallback() {
+    if (canvasFallback) return;
+    canvasFallback = true;
+    entry.iosUseNativeVideo = false;
+    setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry);
+    console.warn('🎬 iPad: ipad.mp4 透過なし → Canvas黒抜きに切替');
+  }
+  function checkAlpha() {
+    if (!vid.videoWidth || vid.videoWidth < 4) return;
+    try {
+      var c = document.createElement('canvas');
+      c.width = 8;
+      c.height = 8;
+      var ctx = c.getContext('2d');
+      ctx.drawImage(vid, 0, 0, 8, 8);
+      if (ctx.getImageData(0, 0, 1, 1).data[3] < 128) {
+        entry.guideNativeAlpha = true;
+        console.log('🎬 iPad: ipad.mp4 透過をそのまま表示');
+        return;
+      }
+    } catch (e0) {}
+    useCanvasFallback();
+  }
+  vid.addEventListener('loadeddata', checkAlpha, { once: true });
+  vid.addEventListener('error', function() {
+    console.warn('🎬 iPad: ipad.mp4 読込失敗');
+    useCanvasFallback();
+  });
+  setTimeout(function() {
+    if (!entry.guideNativeAlpha && !canvasFallback) checkAlpha();
+  }, 3200);
+  return true;
 }
 
 function setupGuideIosScreenCanvasMatte(vid, maskWrap, vh, entry) {
@@ -3220,13 +3328,6 @@ function attachVideoHotspots(sceneId, sceneData) {
     wrap.style.maxWidth = 'none';
     wrap.style.maxHeight = 'none';
 
-    if (vh.groundShadow === true) {
-      var shadow = document.createElement('div');
-      shadow.className = 'scene-video-ground-shadow';
-      shadow.style.display = 'block';
-      wrap.appendChild(shadow);
-    }
-
     var maskWrap = document.createElement('div');
     maskWrap.className = 'scene-video-mask';
     var vid = document.createElement('video');
@@ -3243,6 +3344,7 @@ function attachVideoHotspots(sceneId, sceneData) {
       vid.muted = true;
     }
     maskWrap.appendChild(vid);
+    applyGuideFootContactShadow(maskWrap, vh);
     var entry = { vid: vid, wrap: wrap, maskWrap: maskWrap, sceneId: sceneId, guidePlaybackDone: false };
     applyGuideVideoMatte(vid, maskWrap, vh, entry);
     if (vh.mask !== false) {
