@@ -1,4 +1,4 @@
-// GENERATOR_HISTORY: [{"sceneId":"1-aa002","text":"上矢印の長押しで動画になり その後頂上の標識へ進みます。","fontSize":20,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.56},{"sceneId":"0-aa001","text":"真っ先に花畑に向かったのですが                                                                      霧が深くて引き返し先に登山です。","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.96}]
+// GENERATOR_HISTORY: [{"sceneId":"2-aa003","text":"どこかのシーンに二人のモデルが立っています。　　　　　　　　　　　　　　　　　　　　　　　　ゆっくり回転で見つかります！","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffffff","pitch":1.44,"yaw":0.88},{"sceneId":"2-aa003","text":"どこかのシーンに二人のモデルが","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffffff","pitch":1.44,"yaw":0.88},{"sceneId":"1-aa002","text":"上矢印の長押しで動画になり その後頂上の標識へ進みます。","fontSize":20,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.56},{"sceneId":"0-aa001","text":"真っ先に花畑に向かったのですが                                                                      霧が深くて引き返し先に登山です。","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.96}]
 var APP_DATA = {
   "courseBgm": {
     "aa": {
@@ -42,15 +42,15 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.56,
-          "pitch": 1.49,
+          "yaw": 0.88,
+          "pitch": 1.44,
           "rotation": 0,
           "title": "真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。",
           "text": "真っ先に花畑に向かったのですが\n霧が深くて引き返し先に登山です。",
           "style": {
-            "fontSize": "20px",
+            "fontSize": "21px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
-            "color": "#ffff00"
+            "color": "#ffffff"
           }
         }
       ],
@@ -91,15 +91,15 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.56,
-          "pitch": 1.49,
+          "yaw": 0.88,
+          "pitch": 1.44,
           "rotation": 0,
           "title": "上矢印の長押しで動画になり その後頂上の標識へ進みます。",
           "text": "上矢印の長押しで動画になり その後頂上の標識へ進みます。",
           "style": {
-            "fontSize": "20px",
+            "fontSize": "21px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
-            "color": "#ffff00"
+            "color": "#ffffff"
           }
         }
       ],
@@ -144,7 +144,20 @@ var APP_DATA = {
           "target": "2-aa003"
         }
       ],
-      "infoHotspots": [],
+      "infoHotspots": [
+        {
+          "yaw": 0.88,
+          "pitch": 1.44,
+          "rotation": 0,
+          "title": "どこかのシーンに二人のモデルが立っています。　　　　　　　　　　　　　　　　　　　　　　　　ゆっくり回転で見つかります！",
+          "text": "どこかのシーンに二人のモデルが立っています。　　　　　　　　　　　　　　　　　　　　　　　　ゆっくり回転で見つかります！",
+          "style": {
+            "fontSize": "21px",
+            "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
+            "color": "#ffffff"
+          }
+        }
+      ],
       "position": 3,
       "course": "aa"
     },
@@ -470,15 +483,15 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.56,
-          "pitch": 1.49,
+          "yaw": 0.88,
+          "pitch": 1.44,
           "rotation": 0,
           "title": "ここでは右側の見事なミヤマキリシマに圧倒されました！",
           "text": "ここでは右側の見事なミヤマキリシマに圧倒されました！",
           "style": {
-            "fontSize": "20px",
+            "fontSize": "21px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
-            "color": "#ffff00"
+            "color": "#ffffff"
           }
         }
       ],
@@ -699,15 +712,15 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.56,
-          "pitch": 1.49,
+          "yaw": 0.88,
+          "pitch": 1.44,
           "rotation": 0,
           "title": "ゆっくり右回転でポータルが現れ花びらのアップに移動できます。",
           "text": "ゆっくり右回転でポータルが現れ花びらのアップに移動できます。",
           "style": {
-            "fontSize": "20px",
+            "fontSize": "21px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
-            "color": "#ffff00"
+            "color": "#ffffff"
           }
         }
       ],
@@ -772,15 +785,15 @@ var APP_DATA = {
       ],
       "infoHotspots": [
         {
-          "yaw": 0.56,
-          "pitch": 1.49,
+          "yaw": 0.88,
+          "pitch": 1.44,
           "rotation": 0,
           "title": "ゆっくり回転でポータルが現れそこから動画に移行します。",
           "text": "ゆっくり回転でポータルが現れそこから動画に移行します。",
           "style": {
-            "fontSize": "20px",
+            "fontSize": "21px",
             "fontFamily": "'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif",
-            "color": "#ffff00"
+            "color": "#ffffff"
           }
         }
       ],
