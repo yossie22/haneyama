@@ -561,12 +561,14 @@ window.TILES_BASE = "tiles1024";
   function logGuideHotspotFromData() {
     try {
       var sc = (window.APP_DATA && window.APP_DATA.scenes) || [];
-      for (var i = 0; i < sc.length; i++) {
-        if (sc[i] && sc[i].id === '25-cc003' && sc[i].videoHotspots && sc[i].videoHotspots[0]) {
-          var h = sc[i].videoHotspots[0];
-          console.log('🎬 data.js 25-cc003 guide: yaw=' + h.yaw + ' pitch=' + h.pitch +
-            ' w=' + h.width + ' h=' + h.height);
-          return;
+      var ids = ['25-cc003', '18-aa019'];
+      for (var d = 0; d < ids.length; d++) {
+        for (var i = 0; i < sc.length; i++) {
+          if (sc[i] && sc[i].id === ids[d] && sc[i].videoHotspots && sc[i].videoHotspots[0]) {
+            var h = sc[i].videoHotspots[0];
+            console.log('🎬 data.js ' + ids[d] + ' guide: yaw=' + h.yaw + ' pitch=' + h.pitch +
+              ' w=' + h.width + ' h=' + h.height + ' src=' + (h.src || ''));
+          }
         }
       }
     } catch (eLog) {}
@@ -602,7 +604,8 @@ window.TILES_BASE = "tiles1024";
       });
   }
 
-  var dataCacheBust = urlParams.get('_cv') || urlParams.get('_dv') || String(Date.now());
+  // data.js は常に最新を読む（map の _cv は viewer.html 用。data.js と混ぜると保存が反映されない）
+  var dataCacheBust = String(Date.now());
   fetch('data.js?_=' + encodeURIComponent(dataCacheBust), { cache: 'no-store' })
     .then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2189,7 +2192,6 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   vid.preload = 'auto';
   vid.autoplay = vh.autoplay !== false;
   maskWrap.appendChild(vid);
-  applyGuideFootContactShadow(maskWrap, vh);
   box.appendChild(maskWrap);
   root.appendChild(box);
   var entry = {
@@ -2203,7 +2205,8 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
     overlayW: w,
     overlayH: h,
     sceneId: sceneId,
-    guidePlaybackDone: false
+    guidePlaybackDone: false,
+    guideVideoSrc: vh.src || ''
   };
   applyGuideBlackKeyToEntry(entry, vh);
   if (vh && vh.srcHevc) {
@@ -2216,6 +2219,7 @@ function attachGuideIosScreenOverlay(sceneId, vh, w, h, placeYaw, placePitch) {
   window.sceneVideoEls.push(entry);
   bindGuideIosOverlayTracking();
   updateAllGuideIosOverlays();
+  applyGuideFeetFade(entry, vh);
   vid.addEventListener('error', function onIosVidErr() {
     console.warn('🎬 iPad 動画失敗、別形式を試します:', vid.src, vid.error);
     var webm = videoHotspotSrcUrl(vh.src);
@@ -2376,6 +2380,15 @@ function guideVideoHevcSrc(webmSrc, vh) {
   return s.replace(/(\.[^./]+)$/, '_hevc.mov');
 }
 
+function guideVideoFileBaseName(url) {
+  if (!url) return '';
+  try {
+    return decodeURIComponent(String(url).split('/').pop().split('?')[0]).toLowerCase();
+  } catch (e0) {
+    return String(url).split('/').pop().split('?')[0].toLowerCase();
+  }
+}
+
 function appendGuideVideoSources(vid, vh) {
   if (!vid || !vh || !vh.src) return;
   while (vid.firstChild) vid.removeChild(vid.firstChild);
@@ -2403,16 +2416,7 @@ function appendGuideVideoSources(vid, vh) {
     if (!vid.childNodes.length) vid.src = webmUrl;
     return;
   }
-  /* 無い HEVC を先に読むと WebM に落ちないことがあるため WebM のみ（iPad は上で return） */
-  if (!guideDeviceIsIosSafari()) {
-    var hevc = guideVideoHevcSrc(vh.src, vh);
-    if (hevc) {
-      var sHevc = document.createElement('source');
-      sHevc.src = videoHotspotSrcUrl(hevc);
-      sHevc.type = 'video/mp4; codecs="hvc1"';
-      vid.appendChild(sHevc);
-    }
-  }
+  /* PC・貼り付けプレビュー: WebM のみ（HEVC 先行は未対応ブラウザで再読込ちらつきの原因） */
   var sWebm = document.createElement('source');
   sWebm.src = webmUrl;
   if (/\.webm$/i.test(vh.src)) sWebm.type = 'video/webm; codecs="vp9"';
@@ -2630,17 +2634,16 @@ var placerPreviewSceneId = null;
 var placerPreviewPending = null;
 var placerPreviewLastKey = '';
 var placerPreviewPollTimer = null;
+var placerLiveAttachTimer = null;
 var placerEmbedViewLocked = false;
 
 function placerPreviewHotspotKey(h) {
   if (!h) return '';
   return JSON.stringify({
-    src: h.src, yaw: h.yaw, pitch: h.pitch,
+    src: h.src, srcHevc: h.srcHevc, yaw: h.yaw, pitch: h.pitch,
     width: h.width, height: h.height, radius: h.radius,
     fadeBottom: h.fadeBottom,
-    defringe: h.defringe != null ? h.defringe : h.edgeSoft,
-    tone: h.tone,
-    objectFit: h.objectFit
+    tone: h.tone, objectFit: h.objectFit, objectPositionY: h.objectPositionY
   });
 }
 
@@ -2680,37 +2683,84 @@ function guideFootShadowStyle(vh) {
   };
 }
 
-/** 足元に幅いっぱいの薄いフェードだけ（楕円影は iPad で境目が出やすい） */
-function applyGuideFootContactShadow(maskWrap, vh) {
-  if (!maskWrap || !guideFootShadowEnabled(vh)) return;
-  var olds = maskWrap.querySelectorAll('.scene-video-foot-fade, .scene-video-foot-contact');
-  for (var i = 0; i < olds.length; i++) {
-    if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
+function sceneVideoFadeTargets(entry) {
+  var list = [];
+  if (!entry || !entry.maskWrap) return list;
+  var vid = entry.maskWrap.querySelector('video.scene-video-2d');
+  var canvas = entry.maskWrap.querySelector('canvas.guide-video-canvas');
+  var img = entry.maskWrap.querySelector('img.guide-video-frame');
+  if (vid) list.push(vid);
+  if (canvas) list.push(canvas);
+  if (img) list.push(img);
+  return list;
+}
+
+/** 下フェード：video/canvas 本体にマスク（親 div だけでは動画に効かないことがある） */
+function applySceneVideoBottomFade(entry, bottomFadePct) {
+  if (!entry) return;
+  var bottom = Math.max(0, Math.min(40, parseInt(bottomFadePct, 10) || 0));
+  var targets = sceneVideoFadeTargets(entry);
+  targets.forEach(function(el) {
+    if (bottom <= 0) {
+      el.style.webkitMaskImage = '';
+      el.style.maskImage = '';
+      el.style.webkitMaskSize = '';
+      el.style.maskSize = '';
+      return;
+    }
+    var grad = 'linear-gradient(to top, transparent 0%, rgba(0,0,0,0.85) ' +
+      Math.max(2, Math.round(bottom * 0.4)) + '%, black ' + bottom + '%, black 100%)';
+    el.style.webkitMaskImage = grad;
+    el.style.maskImage = grad;
+    el.style.webkitMaskSize = '100% 100%';
+    el.style.maskSize = '100% 100%';
+    el.style.webkitMaskRepeat = 'no-repeat';
+    el.style.maskRepeat = 'no-repeat';
+  });
+  if (entry.maskWrap) {
+    entry.maskWrap.style.webkitMaskImage = '';
+    entry.maskWrap.style.maskImage = '';
   }
-  if (vh.footShadowMode === 'ellipse') return;
-  var st = guideFootShadowStyle(vh);
-  var el = document.createElement('div');
-  el.className = 'scene-video-foot-fade';
-  el.setAttribute('aria-hidden', 'true');
-  el.style.height = st.heightPct + '%';
-  var a = st.opacity;
-  el.style.background = 'linear-gradient(to top, rgba(0,0,0,' + a + ') 0%, rgba(0,0,0,' + (a * 0.35) + ') 38%, rgba(0,0,0,' + (a * 0.08) + ') 68%, transparent 100%)';
-  maskWrap.appendChild(el);
 }
 
 function applySceneVideoMask(maskWrap, bottomFadePct) {
   if (!maskWrap) return;
-  var bottom = Math.max(0, Math.min(40, parseInt(bottomFadePct, 10) || 0));
-  if (bottom <= 0) {
-    maskWrap.style.webkitMaskImage = 'none';
-    maskWrap.style.maskImage = 'none';
+  var entry = null;
+  (window.sceneVideoEls || []).some(function(e) {
+    if (e && e.maskWrap === maskWrap) { entry = e; return true; }
+    return false;
+  });
+  if (entry) applySceneVideoBottomFade(entry, bottomFadePct);
+}
+
+function clearGuideFeetOverlays(entry) {
+  if (!entry || !entry.wrap) return;
+  entry.wrap.style.boxShadow = '';
+  var olds = entry.wrap.querySelectorAll('.scene-video-ground-dim, .scene-video-foot-fade, .scene-video-foot-contact');
+  for (var i = 0; i < olds.length; i++) {
+    if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
+  }
+}
+
+/** 足元は動画下端のフェードのみ（枠の影・multiply は使わない） */
+function applyGuideFeetFade(entry, vh) {
+  if (!entry) return;
+  clearGuideFeetOverlays(entry);
+  if (vh && vh.mask === false) {
+    applySceneVideoBottomFade(entry, 0);
     return;
   }
-  var bottomGrad = 'linear-gradient(to top, transparent 0%, #000 ' + bottom + '%, #000 100%)';
-  maskWrap.style.webkitMaskImage = bottomGrad;
-  maskWrap.style.maskImage = bottomGrad;
-  maskWrap.style.webkitMaskComposite = 'source-in';
-  maskWrap.style.maskComposite = 'intersect';
+  applySceneVideoBottomFade(entry, vh && vh.fadeBottom != null ? parseInt(vh.fadeBottom, 10) : 0);
+}
+
+function applyGuideFootContactShadow(wrap, vh) {
+  if (!wrap) return;
+  var entry = null;
+  (window.sceneVideoEls || []).some(function(e) {
+    if (e && e.wrap === wrap) { entry = e; return true; }
+    return false;
+  });
+  if (entry) applyGuideFeetFade(entry, vh);
 }
 
 function applyVideoHotspotTone(el, tone) {
@@ -2898,17 +2948,34 @@ function applyGuideBlackKeyToEntry(entry, vh) {
   entry.iosMaxWidthPct = vh && vh.iosMaxWidthPct != null ? parseFloat(vh.iosMaxWidthPct) : 0.72;
 }
 
-function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold, softWidth) {
+function videoHotspotObjectPositionY(vh) {
+  if (vh && vh.objectPositionY != null && isFinite(parseFloat(vh.objectPositionY))) {
+    return Math.max(0, Math.min(100, parseFloat(vh.objectPositionY)));
+  }
+  if (vh && vh.objectFit === 'cover') return 28;
+  return 50;
+}
+
+function guideVideoDrawRect(vw, vh, cw, ch, drawOpts) {
+  var fit = (drawOpts && drawOpts.objectFit === 'cover') ? 'cover' : 'contain';
+  var posY = drawOpts && drawOpts.objectPositionY != null
+    ? Math.max(0, Math.min(100, parseFloat(drawOpts.objectPositionY)))
+    : (fit === 'cover' ? 28 : 50);
+  var scale = fit === 'cover' ? Math.max(cw / vw, ch / vh) : Math.min(cw / vw, ch / vh);
+  var dw = vw * scale;
+  var dh = vh * scale;
+  var dx = (cw - dw) * 0.5;
+  var dy = (ch - dh) * (posY / 100);
+  return { dx: dx, dy: dy, dw: dw, dh: dh };
+}
+
+function drawGuideCanvasBlackKey(ctx, vid, cw, ch, threshold, softWidth, drawOpts) {
   var vw = vid.videoWidth;
   var vh = vid.videoHeight;
   if (!vw || !vh || !ctx || cw < 1 || ch < 1) return;
   ctx.clearRect(0, 0, cw, ch);
-  var scale = Math.min(cw / vw, ch / vh);
-  var dw = vw * scale;
-  var dh = vh * scale;
-  var dx = (cw - dw) * 0.5;
-  var dy = (ch - dh) * 0.5;
-  ctx.drawImage(vid, 0, 0, vw, vh, dx, dy, dw, dh);
+  var rect = guideVideoDrawRect(vw, vh, cw, ch, drawOpts);
+  ctx.drawImage(vid, 0, 0, vw, vh, rect.dx, rect.dy, rect.dw, rect.dh);
   var img = ctx.getImageData(0, 0, cw, ch);
   var d = img.data;
   var thr = threshold != null ? threshold : 16;
@@ -2981,7 +3048,8 @@ function paintGuideCanvasOnce(entry, threshold) {
     entry.guideCanvas.width,
     entry.guideCanvas.height,
     threshold != null ? threshold : entry.blackKeyThr,
-    entry.blackKeySoft
+    entry.blackKeySoft,
+    entry.hotspotDrawOpts
   );
 }
 
@@ -3102,7 +3170,7 @@ function maybeIosGuideImgFallback(entry, vh) {
   c.height = h;
   var ctx = c.getContext('2d', { willReadFrequently: true });
   if (!ctx) return;
-  drawGuideCanvasBlackKey(ctx, entry.vid, w, h, thr, entry.blackKeySoft);
+  drawGuideCanvasBlackKey(ctx, entry.vid, w, h, thr, entry.blackKeySoft, entry.hotspotDrawOpts);
   var opaque = 0;
   try {
     var sample = ctx.getImageData(0, 0, w, h).data;
@@ -3139,7 +3207,7 @@ function maybeIosGuideImgFallback(entry, vh) {
   entry.guideCanvasCtx = ctx;
   function refreshImg() {
     if (!entry.guideCanvasCtx) return;
-    drawGuideCanvasBlackKey(entry.guideCanvasCtx, entry.vid, w, h, thr, entry.blackKeySoft);
+    drawGuideCanvasBlackKey(entry.guideCanvasCtx, entry.vid, w, h, thr, entry.blackKeySoft, entry.hotspotDrawOpts);
     try { img.src = c.toDataURL('image/png'); } catch (e3) {}
   }
   entry.vid.addEventListener('play', function() {
@@ -3258,13 +3326,28 @@ function applyGuideVideoMatte(vid, maskWrap, vh, entry) {
 
 function applyVideoHotspotObjectFit(vid, vh) {
   if (!vid) return;
-  if (vh && vh.objectFit === 'cover') {
-    vid.style.objectFit = 'cover';
-    vid.style.objectPosition = 'center 30%';
-  } else {
-    vid.style.objectFit = 'contain';
-    vid.style.objectPosition = 'center center';
+  var fit = (vh && vh.objectFit === 'cover') ? 'cover' : 'contain';
+  var pos = 'center ' + videoHotspotObjectPositionY(vh) + '%';
+  vid.style.objectFit = fit;
+  vid.style.objectPosition = pos;
+  var wrap = vid.parentElement;
+  if (wrap) {
+    var canvas = wrap.querySelector('canvas.guide-video-canvas');
+    var img = wrap.querySelector('img.guide-video-frame');
+    [canvas, img].forEach(function(el) {
+      if (!el) return;
+      el.style.objectFit = fit;
+      el.style.objectPosition = pos;
+    });
   }
+}
+
+function syncHotspotDrawOpts(entry, vh) {
+  if (!entry) return;
+  entry.hotspotDrawOpts = {
+    objectFit: vh && vh.objectFit === 'cover' ? 'cover' : 'contain',
+    objectPositionY: videoHotspotObjectPositionY(vh)
+  };
 }
 
 function hotspotDefringe(vh) {
@@ -3293,15 +3376,26 @@ function updateVideoHotspotLive(vh) {
   } catch (e) {
     return false;
   }
+  syncHotspotDrawOpts(entry, vh);
   if (entry.vid) {
-    applyGuideVideoMatte(entry.vid, entry.maskWrap, vh, entry);
+    if (vh.src) {
+      var wantBase = guideVideoFileBaseName(vh.src);
+      var curBase = guideVideoFileBaseName(entry.guideVideoSrc || entry.vid.currentSrc || entry.vid.src);
+      if (wantBase && wantBase !== curBase) {
+        appendGuideVideoSources(entry.vid, vh);
+        entry.guideVideoSrc = vh.src;
+        entry.vid.load();
+        ensureGuideVideoPlays(entry);
+      }
+    }
+    applyVideoHotspotObjectFit(entry.vid, vh);
+    applyVideoHotspotTone(entry.vid, vh.tone);
+    if (entry.guideCanvas) applyVideoHotspotTone(entry.guideCanvas, vh.tone);
   }
-  if (entry.maskWrap && vh.mask !== false) {
-    var featherPct = vh.fadeBottom !== undefined ? parseInt(vh.fadeBottom, 10) : 0;
-    applySceneVideoMask(entry.maskWrap, featherPct);
+  applyGuideFeetFade(entry, vh);
+  if (entry.guideCanvasCtx && entry.guideVideoSrc !== vh.src) {
+    paintGuideCanvasOnce(entry, entry.blackKeyThr);
   }
-  var oldFeather = entry.wrap.querySelector('.scene-video-bottom-feather');
-  if (oldFeather && oldFeather.parentNode) oldFeather.parentNode.removeChild(oldFeather);
   return true;
 }
 
@@ -3331,10 +3425,12 @@ function updateIosScreenOverlayFromHotspot(entry, vh) {
     entry.wrap.style.width = entry.overlayW + 'px';
     entry.wrap.style.height = entry.overlayH + 'px';
   }
+  syncHotspotDrawOpts(entry, vh);
   if (entry.vid && entry.maskWrap) {
     applyVideoHotspotObjectFit(entry.vid, vh);
     if (entry.guideCanvas) applyVideoHotspotTone(entry.guideCanvas, vh.tone);
   }
+  applyGuideFeetFade(entry, vh);
   applyGuideBlackKeyToEntry(entry, vh);
   updateAllGuideIosOverlays();
   paintGuideCanvasOnce(entry, entry.blackKeyThr);
@@ -3359,14 +3455,12 @@ function tryApplyPlacerPreviewHotspot() {
     return;
   }
   if (window.sceneVideoHotspotHandles && window.sceneVideoHotspotHandles.length) {
-    placerPreviewHotspot = hotspot;
-    placerPreviewPending = null;
     placerPreviewLastKey = key;
     updateVideoHotspotLive(hotspot);
     return;
   }
-  if (key === placerPreviewLastKey) {
-    updateVideoHotspotLive(hotspot);
+  if (key === placerPreviewLastKey &&
+      window.sceneVideoHotspotHandles && window.sceneVideoHotspotHandles.length) {
     return;
   }
   placerPreviewLastKey = key;
@@ -3375,45 +3469,86 @@ function tryApplyPlacerPreviewHotspot() {
   attachVideoHotspots(currentSceneObj.data.id, currentSceneObj.data);
 }
 
-function applyPlacerPreviewHotspot(hotspot, sceneId) {
+function savedVideoHotspotsForScene(sceneId) {
+  if (window.APP_DATA && window.APP_DATA.scenes) {
+    for (var i = 0; i < window.APP_DATA.scenes.length; i++) {
+      var s = window.APP_DATA.scenes[i];
+      if (s.id === sceneId && s.videoHotspots && s.videoHotspots.length) {
+        return s.videoHotspots;
+      }
+    }
+  }
+  return [];
+}
+
+function schedulePlacerLiveAttach(hotspot, sceneId) {
+  if (!embedPlacerMode || !currentSceneObj || !hotspot) return;
+  if (currentSceneObj.data.id !== sceneId) return;
+  if (placerLiveAttachTimer) clearTimeout(placerLiveAttachTimer);
+  placerLiveAttachTimer = setTimeout(function() {
+    placerLiveAttachTimer = null;
+    placerPreviewSceneId = sceneId;
+    placerPreviewHotspot = hotspot;
+    placerPreviewPending = null;
+    placerPreviewLastKey = placerPreviewHotspotKey(hotspot);
+    destroySceneVideoHotspots();
+    attachVideoHotspots(currentSceneObj.data.id, currentSceneObj.data);
+  }, 50);
+}
+
+function applyPlacerPreviewHotspot(hotspot, sceneId, fromParent) {
   if (!embedPlacerMode) return;
-      placerPreviewSceneId = sceneId || placerPreviewSceneId || '25-cc003';
-  placerPreviewPending = hotspot || null;
+  var newSceneId = sceneId || placerPreviewSceneId || (currentSceneObj ? currentSceneObj.data.id : '25-cc003');
+  if (currentSceneObj && newSceneId !== currentSceneObj.data.id) {
+    return;
+  }
+  if (newSceneId !== placerPreviewSceneId) {
+    placerPreviewLastKey = '';
+  }
+  placerPreviewSceneId = newSceneId;
   if (!hotspot) {
     placerPreviewHotspot = null;
     destroySceneVideoHotspots();
     return;
   }
+  if (fromParent) {
+    schedulePlacerLiveAttach(hotspot, newSceneId);
+    return;
+  }
+  placerPreviewPending = hotspot;
   tryApplyPlacerPreviewHotspot();
 }
 
 function fetchPlacerPreviewFromServer() {
   if (!embedPlacerMode || !currentSceneObj) return;
   var sid = currentSceneObj.data.id;
-  fetch('/api/preview-hotspot?scene=' + encodeURIComponent(placerPreviewSceneId || '25-cc003'), { cache: 'no-store' })
+  fetch('/api/preview-hotspot?scene=' + encodeURIComponent(sid), { cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!currentSceneObj) return;
       if (currentSceneObj.data.id !== sid) return;
-      if (!data.ok || !data.hotspot) {
-        if (sid === placerPreviewSceneId &&
-            !(window.sceneVideoHotspotHandles && window.sceneVideoHotspotHandles.length)) {
+      var hotspot = (data.ok && data.hotspot) ? data.hotspot : null;
+      if (!hotspot) {
+        /* 表示中に data.js へ戻すとスライダー変更が消える */
+        if (window.sceneVideoHotspotHandles && window.sceneVideoHotspotHandles.length) {
+          return;
+        }
+        var saved = savedVideoHotspotsForScene(sid);
+        hotspot = saved.length ? saved[0] : null;
+      }
+      if (!hotspot) {
+        if (!(window.sceneVideoHotspotHandles && window.sceneVideoHotspotHandles.length)) {
           destroySceneVideoHotspots();
         }
         return;
       }
-      placerPreviewSceneId = data.sceneId || placerPreviewSceneId || '25-cc003';
-      if (sid !== placerPreviewSceneId) {
-        destroySceneVideoHotspots();
-        return;
-      }
-      var key = placerPreviewHotspotKey(data.hotspot);
+      placerPreviewSceneId = sid;
+      var key = placerPreviewHotspotKey(hotspot);
       if (key === placerPreviewLastKey && window.sceneVideoHotspotHandles && window.sceneVideoHotspotHandles.length) {
-        updateVideoHotspotLive(data.hotspot);
         return;
       }
-      placerPreviewHotspot = data.hotspot;
-      placerPreviewPending = data.hotspot;
+      placerPreviewHotspot = hotspot;
+      placerPreviewPending = hotspot;
       tryApplyPlacerPreviewHotspot();
     })
     .catch(function() {});
@@ -3422,6 +3557,12 @@ function fetchPlacerPreviewFromServer() {
 function startPlacerPreviewPolling() {
   if (!embedPlacerMode) return;
   notifyPlacerParentReady();
+  /* 貼り付けツールの iframe 内は親が postMessage するためポーリングしない（data.js へ戻して消えるのを防ぐ） */
+  if (window.parent && window.parent !== window) {
+    return;
+  }
+  if (placerPreviewPollTimer) clearInterval(placerPreviewPollTimer);
+  placerPreviewPollTimer = setInterval(fetchPlacerPreviewFromServer, 2000);
 }
 
 if (embedPlacerMode) {
@@ -3430,7 +3571,7 @@ if (embedPlacerMode) {
     var d = ev.data;
     if (!d) return;
     if (d.type === 'placerPreviewHotspot') {
-      applyPlacerPreviewHotspot(d.hotspot, d.sceneId);
+      applyPlacerPreviewHotspot(d.hotspot, d.sceneId, true);
       return;
     }
     if (d.type === 'placerLookAtGuide' && currentScene && currentScene.view()) {
@@ -3482,14 +3623,11 @@ function attachVideoHotspots(sceneId, sceneData) {
       vid.muted = true;
     }
     maskWrap.appendChild(vid);
-    applyGuideFootContactShadow(maskWrap, vh);
     wrap.appendChild(maskWrap);
-    var entry = { vid: vid, wrap: wrap, maskWrap: maskWrap, sceneId: sceneId, guidePlaybackDone: false };
+    var entry = { vid: vid, wrap: wrap, maskWrap: maskWrap, sceneId: sceneId, guidePlaybackDone: false, guideVideoSrc: vh.src || '' };
+    syncHotspotDrawOpts(entry, vh);
     applyGuideVideoMatte(vid, maskWrap, vh, entry);
-    if (vh.mask !== false) {
-      var featherPct0 = vh.fadeBottom !== undefined ? parseInt(vh.fadeBottom, 10) : 0;
-      applySceneVideoMask(maskWrap, featherPct0);
-    }
+    applyGuideFeetFade(entry, vh);
     if (vh.loop !== true) {
       wrap.style.pointerEvents = 'none';
     }

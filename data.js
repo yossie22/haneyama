@@ -824,17 +824,18 @@ var APP_DATA = {
       "videoHotspots": [
         {
           "src": "video/海軍.webm",
-          "yaw": -165,
-          "pitch": 10,
-          "width": 560,
-          "height": 760,
+          "yaw": -119.5,
+          "pitch": 30.3,
+          "width": 995,
+          "height": 1351,
           "radius": 850,
           "fade": 0,
-          "fadeBottom": 16,
+          "fadeBottom": 28,
           "fullscreen": false,
           "objectFit": "contain",
+          "objectPositionY": 50,
           "tone": {
-            "brightness": 0.9,
+            "brightness": 0.96,
             "contrast": 1.12,
             "saturate": 0.88
           },
@@ -842,7 +843,7 @@ var APP_DATA = {
           "fadeInMs": 0,
           "autoplay": false,
           "playOnView": true,
-          "playYawRange": 35,
+          "playYawRange": 18,
           "srcIos": "video/guide_alpha_ios.mp4",
           "srcHevc": "video/ipad2.mp4",
           "footShadow": false
@@ -1103,15 +1104,16 @@ var APP_DATA = {
       "videoHotspots": [
         {
           "src": "video/guide_alpha.webm",
-          "yaw": 287.7,
-          "pitch": 16.9,
-          "width": 1048,
-          "height": 1101,
+          "yaw": 281.9,
+          "pitch": 6.4,
+          "width": 812,
+          "height": 853,
           "radius": 850,
           "fade": 0,
-          "fadeBottom": 0,
+          "fadeBottom": 20,
           "fullscreen": false,
           "objectFit": "contain",
+          "objectPositionY": 50,
           "tone": {
             "brightness": 0.93,
             "contrast": 1.12,
