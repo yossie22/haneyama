@@ -114,10 +114,30 @@ var SIDE_BRANCHES = [
       "up": -90
     },
     "returnSectors": [
-      { "center": 0, "dirs": ["down"] },
-      { "center": 90, "dirs": ["right"] },
-      { "center": -90, "dirs": ["left"] },
-      { "center": 180, "dirs": ["up"] }
+      {
+        "center": 0,
+        "dirs": [
+          "down"
+        ]
+      },
+      {
+        "center": 90,
+        "dirs": [
+          "right"
+        ]
+      },
+      {
+        "center": -90,
+        "dirs": [
+          "left"
+        ]
+      },
+      {
+        "center": 180,
+        "dirs": [
+          "up"
+        ]
+      }
     ]
   },
   {
@@ -134,6 +154,44 @@ var SIDE_BRANCHES = [
       "left": 0,
       "down": 90
     }
+  },
+  {
+    "sceneId": "24-cc002",
+    "type": "return",
+    "target": "22-bb003",
+    "returnCenterDeg": -90,
+    "returnToTargetYawDeg": {
+      "right": 90,
+      "up": 180,
+      "left": -90,
+      "down": 0
+    },
+    "returnSectors": [
+      {
+        "center": 0,
+        "dirs": [
+          "right"
+        ]
+      },
+      {
+        "center": 90,
+        "dirs": [
+          "up"
+        ]
+      },
+      {
+        "center": 180,
+        "dirs": [
+          "left"
+        ]
+      },
+      {
+        "center": -90,
+        "dirs": [
+          "down"
+        ]
+      }
+    ]
   }
 ];
 
@@ -162,10 +220,8 @@ function spreadPinPositions(pins) {
   return positions;
 }
 
-var VIEWER_CACHE_VER = '20260605-ipadm25';
-
 function goToScene(pin) {
-  var url = './viewer.html?id=' + pin.sceneId + '&_cv=' + VIEWER_CACHE_VER;
+  var url = './viewer.html?id=' + pin.sceneId;
   if (pin.flip) url += '&flip=1';
   if (SIDE_BRANCHES.length > 0) {
     url += '&sideBranches=' + encodeURIComponent(JSON.stringify(SIDE_BRANCHES));

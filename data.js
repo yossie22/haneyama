@@ -532,7 +532,8 @@ var APP_DATA = {
       ],
       "infoHotspots": [],
       "position": 13,
-      "course": "aa"
+      "course": "aa",
+      "yellowAutoMove": true
     },
     {
       "id": "13-aa014",
@@ -568,7 +569,8 @@ var APP_DATA = {
       ],
       "infoHotspots": [],
       "position": 14,
-      "course": "aa"
+      "course": "aa",
+      "yellowAutoMove": true
     },
     {
       "id": "14-aa015",
@@ -604,7 +606,8 @@ var APP_DATA = {
       ],
       "infoHotspots": [],
       "position": 15,
-      "course": "aa"
+      "course": "aa",
+      "yellowAutoMove": true
     },
     {
       "id": "15-aa016",
@@ -640,7 +643,8 @@ var APP_DATA = {
       ],
       "infoHotspots": [],
       "position": 16,
-      "course": "aa"
+      "course": "aa",
+      "yellowAutoMove": true
     },
     {
       "id": "16-aa017",
@@ -676,7 +680,8 @@ var APP_DATA = {
       ],
       "infoHotspots": [],
       "position": 17,
-      "course": "aa"
+      "course": "aa",
+      "yellowAutoMove": true
     },
     {
       "id": "17-aa018",
@@ -749,7 +754,8 @@ var APP_DATA = {
           "playVideoOnTap": true,
           "videoLoop": false
         }
-      ]
+      ],
+      "yellowAutoMove": true
     },
     {
       "id": "18-aa019",
@@ -830,7 +836,7 @@ var APP_DATA = {
           "height": 1351,
           "radius": 850,
           "fade": 0,
-          "fadeBottom": 28,
+          "fadeBottom": 34,
           "fullscreen": false,
           "objectFit": "contain",
           "objectPositionY": 50,
@@ -846,9 +852,21 @@ var APP_DATA = {
           "playYawRange": 18,
           "srcIos": "video/guide_alpha_ios.mp4",
           "srcHevc": "video/ipad2.mp4",
-          "footShadow": false
+          "footShadow": true,
+          "footShadowConfig": {
+            "widthPx": 372,
+            "offsetYawDeg": 2.5,
+            "offsetPitchDeg": -16.5,
+            "opacity": 0.62,
+            "blurPx": 29,
+            "rotateDeg": 0,
+            "scaleX": 2.5,
+            "scaleY": 1.4
+          },
+          "footShadowImage": "shadows/18-aa019_foot.png"
         }
-      ]
+      ],
+      "yellowAutoMove": true
     },
     {
       "id": "19-aa020",
@@ -1110,7 +1128,7 @@ var APP_DATA = {
           "height": 853,
           "radius": 850,
           "fade": 0,
-          "fadeBottom": 20,
+          "fadeBottom": 17,
           "fullscreen": false,
           "objectFit": "contain",
           "objectPositionY": 50,
@@ -1126,10 +1144,28 @@ var APP_DATA = {
           "playYawRange": 18,
           "srcIos": "video/guide_alpha_ios.mp4",
           "srcHevc": "video/ipad.mp4",
-          "footShadow": false
+          "footShadow": true,
+          "footShadowImage": "shadows/25-cc003_foot.png",
+          "footShadowConfig": {
+            "widthPx": 480,
+            "offsetYawDeg": 0,
+            "offsetPitchDeg": 0.5,
+            "opacity": 0.39,
+            "blurPx": 15,
+            "rotateDeg": 0,
+            "scaleX": 1.82,
+            "scaleY": 1.88
+          }
         }
       ]
     }
   ],
-  "name": "Local 1024tiles"
+  "name": "Local 1024tiles",
+  "yellowAutoMoveRanges": [
+    {
+      "courseDir": "aa",
+      "from": 13,
+      "to": 19
+    }
+  ]
 };

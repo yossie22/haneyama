@@ -234,6 +234,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
   transform: translateZ(1px);
   backface-visibility: hidden;
   position: relative;
+  z-index: 2;
   background: transparent;
   border: none;
   outline: none;
@@ -348,8 +349,20 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
   opacity: 0;
   pointer-events: none;
 }
-.scene-video-ground-shadow {
-  display: none;
+.scene-video-ground-shadow,
+.scene-video-ground-shadow-pano {
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  line-height: 0;
+  position: relative;
+  z-index: 0;
+}
+.scene-video-ground-shadow-pano img {
+  display: block;
+  pointer-events: none;
+  max-width: none;
+  height: auto;
+  mix-blend-mode: multiply;
 }
 /* 全作品共通：足元のごく薄いフェード（楕円・multiply は iPad で境目が出るため使わない） */
 .scene-video-foot-fade {
@@ -482,6 +495,15 @@ body.embed-placer #crosshair { display: none !important; }
 body.embed-placer #sceneText { display: none !important; }
 body.embed-placer #videoFullscreenOverlay { display: none !important; }
 body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
+body.embed-shadow #speedContainer,
+body.embed-shadow #zoomContainer,
+body.embed-shadow #fadeContainer,
+body.embed-shadow #crosshair { display: none !important; }
+body.embed-shadow #sceneText { display: none !important; }
+body.embed-shadow #videoFullscreenOverlay { display: none !important; }
+body.embed-shadow .scene-video-2d-wrap { pointer-events: none !important; }
+body.embed-shadow #pano { cursor: grab; }
+body.embed-shadow #pano:active { cursor: grabbing; }
 
 #viewerBuildBadge { display: none !important; }
 
@@ -541,8 +563,11 @@ body.embed-placer .scene-video-2d-wrap { pointer-events: none !important; }
 // ========================================
 var urlParams = new URLSearchParams(window.location.search);
 var embedPlacerMode = urlParams.get('embed') === '1';
+var embedShadowMode = urlParams.get('embed') === 'shadow';
 if (embedPlacerMode) document.body.classList.add('embed-placer');
+if (embedShadowMode) document.body.classList.add('embed-shadow');
 var initialYaw = urlParams.get('yaw');
+var initialPitch = urlParams.get('pitch');
 // ★ 前後左右反転フラグ（?flip=1 で全矢印方向を逆にする）
 var flipDir = urlParams.get('flip') === '1';
 // ★タイルフォルダ名（実フォルダに合わせて 'tiles'）
@@ -875,7 +900,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-05-ipadm25';
+var BUILD_STAMP = '2026-06-08-footShadowPaint7';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -887,7 +912,7 @@ bindIOSGuideVideoKick();
 // ★画面タッチで自動再生停止（黄色矢印と同じ方式）
 panoElement.addEventListener('mousedown', function() {
   if (typeof autoMoveActive !== 'undefined' && autoMoveActive) {
-    stopAutoMove();
+    stopAutoMove(true);
     console.log('⛔ タッチで自動再生停止');
   }
 });
@@ -897,7 +922,7 @@ panoElement.addEventListener('touchstart', function(e) {
     return;
   }
   if (typeof autoMoveActive !== 'undefined' && autoMoveActive) {
-    stopAutoMove();
+    stopAutoMove(true);
     console.log('⛔ タッチで自動再生停止');
   }
 }, { passive: true });
@@ -2634,6 +2659,9 @@ var placerPreviewSceneId = null;
 var placerPreviewPending = null;
 var placerPreviewLastKey = '';
 var placerPreviewPollTimer = null;
+var shadowPreviewHotspot = null;
+var shadowPreviewSceneId = null;
+var shadowPreviewLastKey = '';
 var placerLiveAttachTimer = null;
 var placerEmbedViewLocked = false;
 
@@ -2666,21 +2694,255 @@ function runVideoHotspotFadeIn(wrap, fadeMs) {
   });
 }
 
+function resolveFootShadowImagePath(vh) {
+  if (!vh) return '';
+  var p = vh.footShadowImage || vh.groundShadowImage || '';
+  return typeof p === 'string' ? p.trim() : '';
+}
+
 function guideFootShadowEnabled(vh) {
-  return !!(vh && (vh.footShadow === true || vh.groundShadow === true));
+  return !!(vh && vh.footShadow === true && resolveFootShadowImagePath(vh));
+}
+
+function resolveFootShadowConfig(vh) {
+  var cfg = (vh && vh.footShadowConfig && typeof vh.footShadowConfig === 'object') ? vh.footShadowConfig : {};
+  return {
+    widthPx: cfg.widthPx != null ? parseInt(cfg.widthPx, 10) : 240,
+    offsetYawDeg: cfg.offsetYawDeg != null ? parseFloat(cfg.offsetYawDeg) : 0,
+    offsetPitchDeg: cfg.offsetPitchDeg != null ? parseFloat(cfg.offsetPitchDeg) : 0,
+    opacity: Math.max(0.02, Math.min(1, parseFloat(cfg.opacity != null ? cfg.opacity : 0.7))),
+    blurPx: cfg.blurPx != null ? parseInt(cfg.blurPx, 10) : 0,
+    rotateDeg: cfg.rotateDeg != null ? parseFloat(cfg.rotateDeg) : 0,
+    scaleX: cfg.scaleX != null ? parseFloat(cfg.scaleX) : 1,
+    scaleY: cfg.scaleY != null ? parseFloat(cfg.scaleY) : 1
+  };
+}
+
+function buildFootShadowPatch(vh) {
+  if (!guideFootShadowEnabled(vh)) {
+    return { footShadow: false };
+  }
+  return {
+    footShadow: true,
+    footShadowImage: resolveFootShadowImagePath(vh),
+    footShadowConfig: resolveFootShadowConfig(vh)
+  };
+}
+
+function destroyEntryGroundShadow(entry) {
+  if (!entry) return;
+  if (entry.groundShadowHotspotHandle) {
+    try {
+      if (typeof entry.groundShadowHotspotHandle.destroy === 'function') {
+        entry.groundShadowHotspotHandle.destroy();
+      }
+    } catch (e) {}
+    entry.groundShadowHotspotHandle = null;
+  }
+  entry.groundShadowEl = null;
+}
+
+function paintGuideGroundShadowElement(el, c, imgPath) {
+  var img = el.querySelector('img.foot-shadow-png');
+  if (!img) {
+    el.textContent = '';
+    img = document.createElement('img');
+    img.className = 'foot-shadow-png';
+    img.alt = '';
+    img.draggable = false;
+    el.appendChild(img);
+  }
+  var src = imgPath;
+  if (src.indexOf('data:') !== 0 && src.indexOf('?') < 0) {
+    src += '?v=' + encodeURIComponent(BUILD_STAMP);
+  }
+  if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+  var widthPx = Math.max(20, c.widthPx || 240);
+  img.style.width = widthPx + 'px';
+  img.style.height = 'auto';
+  img.style.opacity = String(Math.max(0.02, Math.min(1, c.opacity != null ? c.opacity : 0.75)));
+  var blur = Math.max(0, Math.min(30, c.blurPx || 0));
+  img.style.filter = blur > 0 ? ('blur(' + blur + 'px)') : 'none';
+  var sx = c.scaleX != null ? c.scaleX : 1;
+  var sy = c.scaleY != null ? c.scaleY : 1;
+  img.style.transform = 'rotate(' + (c.rotateDeg || 0) + 'deg) scale(' + sx + ',' + sy + ')';
+}
+
+function computeGuideFootPitchBaseDeg(entry) {
+  if (!entry) return 0;
+  var h = entry.guideH || (entry.wrap ? parseInt(entry.wrap.style.height, 10) : 0) || 380;
+  var radius = entry.guideRadius || 850;
+  var footDrop = h * 0.52 + 28;
+  return radToDeg(Math.atan(footDrop / Math.max(200, radius))) + 6;
+}
+
+function guideShadowPlacePosition(entry, c) {
+  var yawDelta = degToRad(c.offsetYawDeg);
+  var pitchBase = computeGuideFootPitchBaseDeg(entry);
+  var pitchDelta = degToRad(pitchBase + (c.offsetPitchDeg || 0));
+  return {
+    yaw: entry.guidePlaceYaw + yawDelta,
+    pitch: entry.guidePlacePitch + pitchDelta
+  };
+}
+
+function applyGuideGroundShadow(entry, vh) {
+  if (!entry || !currentScene) return;
+  var imgPath = resolveFootShadowImagePath(vh);
+  if (!guideFootShadowEnabled(vh)) {
+    destroyEntryGroundShadow(entry);
+    return;
+  }
+  if (entry.guidePlaceYaw == null || entry.guidePlacePitch == null) return;
+  var c = resolveFootShadowConfig(vh);
+  var radius = entry.guideRadius || 850;
+  var pos = guideShadowPlacePosition(entry, c);
+  if (entry.groundShadowEl && entry.groundShadowHotspotHandle) {
+    paintGuideGroundShadowElement(entry.groundShadowEl, c, imgPath);
+    try {
+      entry.groundShadowHotspotHandle.setPosition(pos);
+    } catch (ePos) {}
+    scheduleShadowPaintLayoutPost();
+    return;
+  }
+  destroyEntryGroundShadow(entry);
+  var el = document.createElement('div');
+  el.className = 'scene-video-ground-shadow-pano';
+  paintGuideGroundShadowElement(el, c, imgPath);
+  var hs = currentScene.hotspotContainer().createHotspot(el, pos, {
+    perspective: { radius: radius + 120 }
+  });
+  entry.groundShadowEl = el;
+  entry.groundShadowHotspotHandle = hs;
+  window.sceneVideoHotspotHandles.push(hs);
+  scheduleShadowPaintLayoutPost();
+}
+
+var shadowPaintLayoutTimer = 0;
+var shadowPaintLayoutHooked = false;
+
+function ensureGuidePaintMaskCanvas(entry) {
+  if (!entry || !entry.vid) return null;
+  var vw = entry.vid.videoWidth;
+  var vh = entry.vid.videoHeight;
+  if (!vw || !vh) return null;
+  var wrapW = entry.guideW || parseInt(entry.wrap.style.width, 10) || 280;
+  var wrapH = entry.guideH || parseInt(entry.wrap.style.height, 10) || 380;
+  var cw = 160;
+  var ch = Math.max(40, Math.round(cw * wrapH / wrapW));
+  if (!entry.shadowPaintMaskCanvas) {
+    entry.shadowPaintMaskCanvas = document.createElement('canvas');
+  }
+  var c = entry.shadowPaintMaskCanvas;
+  if (c.width !== cw) c.width = cw;
+  if (c.height !== ch) c.height = ch;
+  var ctx = c.getContext('2d');
+  if (entry.guideCanvasCtx && entry.guideCanvas && entry.guideCanvas.width > 0) {
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(entry.guideCanvas, 0, 0, cw, ch);
+  } else {
+    drawGuideCanvasBlackKey(
+      ctx, entry.vid, cw, ch,
+      entry.blackKeyThr != null ? entry.blackKeyThr : 16,
+      entry.blackKeySoft != null ? entry.blackKeySoft : 20,
+      entry.hotspotDrawOpts
+    );
+  }
+  return c;
+}
+
+function estimateShadowScreenRect(entry, wrapR) {
+  var h = wrapR.height || 380;
+  var w = wrapR.width || 280;
+  return {
+    left: wrapR.left - w * 0.2,
+    top: wrapR.bottom - h * 0.02,
+    width: w * 1.4,
+    height: Math.max(64, h * 0.22)
+  };
+}
+
+function computeShadowPaintRegion(wrapR, shadowR) {
+  var h = wrapR.height || 380;
+  var w = wrapR.width || 280;
+  var region = {
+    left: wrapR.left - w * 0.3,
+    top: wrapR.bottom - h * 0.06,
+    width: w * 1.6,
+    height: Math.max(h * 0.32, 72)
+  };
+  if (shadowR && shadowR.width > 8) {
+    region.left = Math.min(region.left, shadowR.left - shadowR.width * 0.15);
+    region.top = Math.min(region.top, shadowR.top - shadowR.height * 0.1);
+    region.width = Math.max(region.width, shadowR.width * 1.35);
+    region.height = Math.max(region.height, shadowR.height * 1.5);
+  }
+  return region;
+}
+
+function buildShadowPaintLayout() {
+  var entry = window.sceneVideoEls && window.sceneVideoEls[0];
+  if (!entry || !entry.wrap) return null;
+  var wrapR = entry.wrap.getBoundingClientRect();
+  if (!wrapR.width || !wrapR.height) return null;
+  var shadowR = null;
+  if (entry.groundShadowEl) {
+    var imgEl = entry.groundShadowEl.querySelector('img.foot-shadow-png');
+    shadowR = (imgEl || entry.groundShadowEl).getBoundingClientRect();
+  }
+  if (!shadowR || shadowR.width < 8) shadowR = estimateShadowScreenRect(entry, wrapR);
+  var paintRegion = computeShadowPaintRegion(wrapR, shadowR);
+  var maskC = ensureGuidePaintMaskCanvas(entry);
+  var maskDataUrl = '';
+  if (maskC) {
+    try { maskDataUrl = maskC.toDataURL('image/png'); } catch (eMask) {}
+  }
+  return {
+    sceneW: window.innerWidth,
+    sceneH: window.innerHeight,
+    guideRect: {
+      left: wrapR.left, top: wrapR.top,
+      width: wrapR.width, height: wrapR.height
+    },
+    shadowRect: {
+      left: shadowR.left, top: shadowR.top,
+      width: shadowR.width, height: shadowR.height
+    },
+    paintRegion: paintRegion,
+    footPitchBaseDeg: computeGuideFootPitchBaseDeg(entry),
+    maskDataUrl: maskDataUrl,
+    maskW: maskC ? maskC.width : 0,
+    maskH: maskC ? maskC.height : 0
+  };
+}
+
+function postShadowPaintLayoutToParent() {
+  if (!embedShadowMode || !window.parent || window.parent === window) return;
+  var layout = buildShadowPaintLayout();
+  if (!layout) return;
+  try {
+    window.parent.postMessage({ type: 'shadowPaintLayout', layout: layout }, '*');
+  } catch (ePost) {}
+}
+
+function scheduleShadowPaintLayoutPost() {
+  if (!embedShadowMode) return;
+  if (shadowPaintLayoutTimer) clearTimeout(shadowPaintLayoutTimer);
+  shadowPaintLayoutTimer = setTimeout(function() {
+    shadowPaintLayoutTimer = 0;
+    postShadowPaintLayoutToParent();
+  }, 70);
+}
+
+function attachShadowPaintLayoutSync() {
+  if (!embedShadowMode || shadowPaintLayoutHooked) return;
+  if (!currentScene || !currentScene.view()) return;
+  shadowPaintLayoutHooked = true;
+  currentScene.view().addEventListener('change', scheduleShadowPaintLayoutPost);
 }
 
 function guideFootShadowStyle(vh) {
-  var op = 0.1;
-  if (vh.footShadowStrength != null) op = parseFloat(vh.footShadowStrength);
-  else if (vh.groundShadowStrength != null) op = parseFloat(vh.groundShadowStrength);
-  var h = 11;
-  if (vh.footShadowHeight != null) h = parseInt(vh.footShadowHeight, 10);
-  else if (vh.groundShadowHeight != null) h = parseInt(vh.groundShadowHeight, 10);
-  return {
-    opacity: Math.max(0.03, Math.min(0.2, op)),
-    heightPct: Math.max(6, Math.min(20, h))
-  };
+  return resolveFootShadowConfig(vh);
 }
 
 function sceneVideoFadeTargets(entry) {
@@ -2742,15 +3004,17 @@ function clearGuideFeetOverlays(entry) {
   }
 }
 
-/** 足元は動画下端のフェードのみ（枠の影・multiply は使わない） */
+/** 足元フェード＋地面影（影は wrap 内の別レイヤー。モデル保存とは独立） */
 function applyGuideFeetFade(entry, vh) {
   if (!entry) return;
   clearGuideFeetOverlays(entry);
   if (vh && vh.mask === false) {
     applySceneVideoBottomFade(entry, 0);
+    applyGuideGroundShadow(entry, vh);
     return;
   }
   applySceneVideoBottomFade(entry, vh && vh.fadeBottom != null ? parseInt(vh.fadeBottom, 10) : 0);
+  applyGuideGroundShadow(entry, vh);
 }
 
 function applyGuideFootContactShadow(wrap, vh) {
@@ -3295,6 +3559,16 @@ function bindIOSGuideVideoKick() {
 
 function applyGuideVideoMatte(vid, maskWrap, vh, entry) {
   if (!vid || !maskWrap) return;
+  if (embedShadowMode && entry) {
+    maskWrap.classList.remove('guide-matte-lighten');
+    if (setupGuideCanvasBlackKey(vid, maskWrap, vh, entry)) {
+      applyVideoHotspotObjectFit(vid, vh);
+      applyVideoHotspotTone(vid, vh.tone);
+      paintGuideCanvasOnce(entry, entry.blackKeyThr);
+      ensureGuideVideoPlays(entry);
+      return;
+    }
+  }
   if (entry && guideDeviceIsIosSafari() && vh && vh.srcHevc) {
     applyVideoHotspotObjectFit(vid, vh);
     applyVideoHotspotTone(vid, vh.tone);
@@ -3392,7 +3666,13 @@ function updateVideoHotspotLive(vh) {
     applyVideoHotspotTone(entry.vid, vh.tone);
     if (entry.guideCanvas) applyVideoHotspotTone(entry.guideCanvas, vh.tone);
   }
+  entry.guidePlaceYaw = placeYaw;
+  entry.guidePlacePitch = placePitch;
+  entry.guideRadius = radius;
+  entry.guideW = w;
+  entry.guideH = h;
   applyGuideFeetFade(entry, vh);
+  applyGuideGroundShadow(entry, vh);
   if (entry.guideCanvasCtx && entry.guideVideoSrc !== vh.src) {
     paintGuideCanvasOnce(entry, entry.blackKeyThr);
   }
@@ -3400,6 +3680,9 @@ function updateVideoHotspotLive(vh) {
 }
 
 function getVideoHotspotsForScene(sceneId, sceneData) {
+  if (embedShadowMode && shadowPreviewHotspot && shadowPreviewSceneId === sceneId) {
+    return [shadowPreviewHotspot];
+  }
   // 貼り付けプレビューは編集中シーンだけ。他の cc シーンでは出さない
   if (embedPlacerMode && placerPreviewHotspot && placerPreviewSceneId === sceneId) {
     return [placerPreviewHotspot];
@@ -3583,6 +3866,73 @@ if (embedPlacerMode) {
   });
 }
 
+function shadowPreviewHotspotKey(h) {
+  if (!h) return '';
+  return JSON.stringify({
+    footShadow: h.footShadow,
+    footShadowImage: h.footShadowImage || '',
+    footShadowConfig: h.footShadowConfig || null
+  });
+}
+
+function notifyShadowParentReady() {
+  if (!embedShadowMode || !window.parent || window.parent === window) return;
+  try {
+    window.parent.postMessage({
+      type: 'shadowViewerReady',
+      sceneId: currentSceneObj ? currentSceneObj.data.id : null
+    }, '*');
+  } catch (e) {}
+  scheduleShadowPaintLayoutPost();
+}
+
+function applyShadowPreviewHotspot(hotspot, sceneId) {
+  if (!embedShadowMode || !hotspot) return;
+  var sid = sceneId || shadowPreviewSceneId || (currentSceneObj ? currentSceneObj.data.id : null);
+  if (!sid) return;
+  shadowPreviewSceneId = sid;
+  shadowPreviewHotspot = hotspot;
+  shadowPreviewLastKey = shadowPreviewHotspotKey(hotspot);
+  if (currentSceneObj && currentSceneObj.data.id === sid) {
+    var entry = window.sceneVideoEls && window.sceneVideoEls[0];
+    if (entry && entry.wrap) {
+      applyGuideFeetFade(entry, hotspot);
+      applyGuideGroundShadow(entry, hotspot);
+      scheduleShadowPaintLayoutPost();
+      return;
+    }
+    attachVideoHotspots(sid, currentSceneObj.data);
+    return;
+  }
+  switchScene(
+    sid,
+    hotspot.yaw != null ? degToRad(parseFloat(hotspot.yaw)) : undefined,
+    hotspot.pitch != null ? degToRad(parseFloat(hotspot.pitch)) : undefined
+  );
+}
+
+if (embedShadowMode) {
+  window.addEventListener('message', function(ev) {
+    var d = ev.data;
+    if (!d) return;
+    if (d.type === 'shadowPreview') {
+      applyShadowPreviewHotspot(d.hotspot, d.sceneId);
+      return;
+    }
+    if (d.type === 'shadowPaintRequestLayout') {
+      postShadowPaintLayoutToParent();
+      return;
+    }
+    if (d.type === 'shadowLookAtGuide' && currentScene && currentScene.view()) {
+      var params = currentScene.view().parameters();
+      params.yaw = degToRad(parseFloat(d.yaw) || 0);
+      if (d.pitch != null && isFinite(d.pitch)) params.pitch = degToRad(parseFloat(d.pitch));
+      currentScene.view().setParameters(params);
+      scheduleShadowPaintLayoutPost();
+    }
+  });
+}
+
 function attachVideoHotspots(sceneId, sceneData) {
   var list = getVideoHotspotsForScene(sceneId, sceneData);
   if (!list || !list.length || !currentScene) return;
@@ -3649,6 +3999,14 @@ function attachVideoHotspots(sceneId, sceneData) {
       console.warn('🎬 pitch=' + vh.pitch + '° は大きすぎて見えないことが多いです。8〜15 前後を推奨');
     }
     var radius = videoHotspotPerspectiveRadius(vh, w, h);
+    entry.guidePlaceYaw = placeYaw;
+    entry.guidePlacePitch = placePitch;
+    entry.guideRadius = radius;
+    entry.guideW = w;
+    entry.guideH = h;
+    if (guideFootShadowEnabled(vh)) {
+      applyGuideGroundShadow(entry, vh);
+    }
     var hs = currentScene.hotspotContainer().createHotspot(wrap,
       { yaw: placeYaw, pitch: placePitch },
       { perspective: { radius: radius } }
@@ -3659,6 +4017,15 @@ function attachVideoHotspots(sceneId, sceneData) {
       ' yaw=' + vh.yaw + '° pitch=' + vh.pitch + '° size=' + w + 'x' + h + ' radius=' + radius +
       ' （1回再生・終了後は静止画）');
     setupGuideVideoPlayback(vid, vh, sceneId, entry, currentScene.view());
+    if (embedShadowMode) {
+      function onShadowVidReady() {
+        if (entry.guideCanvasCtx) paintGuideCanvasOnce(entry, entry.blackKeyThr);
+        scheduleShadowPaintLayoutPost();
+      }
+      vid.addEventListener('loadeddata', onShadowVidReady);
+      vid.addEventListener('seeked', onShadowVidReady);
+      setTimeout(onShadowVidReady, 1200);
+    }
     vid.addEventListener('error', function() {
       var hevcHint = guideVideoHevcSrc(vh.src, vh);
       console.error('🎬 動画読込失敗: ' + vh.src + (hevcHint ? ' / ' + hevcHint : ''), vid.error);
@@ -3684,6 +4051,17 @@ function scheduleAttachVideoHotspots(sceneId, sceneData, delayMs) {
       } else if (sceneData.videoHotspots && sceneData.videoHotspots[0]) {
         applyPlacerPreviewHotspot(sceneData.videoHotspots[0], sceneId);
       }
+      return;
+    }
+    if (embedShadowMode) {
+      notifyShadowParentReady();
+      attachShadowPaintLayoutSync();
+      if (shadowPreviewHotspot) {
+        applyShadowPreviewHotspot(shadowPreviewHotspot, sceneId);
+      } else if (sceneData.videoHotspots && sceneData.videoHotspots[0]) {
+        applyShadowPreviewHotspot(sceneData.videoHotspots[0], sceneId);
+      }
+      notifyShadowParentReady();
       return;
     }
     attachVideoHotspots(sceneId, sceneData);
@@ -3743,7 +4121,10 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
     targetYaw = obj.data.initialViewParameters?.yaw;
   }
 
-  if (targetPitch === undefined) {
+  if (initialPitch !== null) {
+    targetPitch = degToRad(parseFloat(initialPitch));
+    initialPitch = null;
+  } else if (targetPitch === undefined) {
     targetPitch = obj.data.initialViewParameters?.pitch;
   }
 
@@ -3754,7 +4135,8 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
     viewParams = { yaw: targetYaw, pitch: targetPitch, fov: targetFov };
   }
 
-  var fadePct = (typeof autoMoveActive !== 'undefined' && autoMoveActive)
+  var fadePct = ((typeof autoMoveActive !== 'undefined' && autoMoveActive) ||
+    (typeof yellowAutoMoveEnterViaArrow !== 'undefined' && yellowAutoMoveEnterViaArrow))
     ? readAutoFadePctFromSlider()
     : null;
   var crossfadeDur = fadePct != null
@@ -3775,7 +4157,7 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
   if (guideDeviceIsIosSafari()) rebindGuideIosViewListener();
 
   if (sceneHasVideoHotspots(sceneId, obj.data)) {
-    if (embedPlacerMode) {
+    if (embedPlacerMode || embedShadowMode) {
       scheduleAttachVideoHotspots(sceneId, obj.data, 0);
     } else {
       attachVideoHotspots(sceneId, obj.data);
@@ -3857,6 +4239,8 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
   playSceneBGM(sceneId);
   
   showUI();
+  
+  scheduleYellowAutoMoveAfterSwitch(sceneId, crossfadeDur);
   
   // ★imageHotspots（出発地＝sceneId に紐づくものを全シーンから収集）
   var portalList = collectImageHotspotsForScene(sceneId);
@@ -4029,11 +4413,19 @@ document.getElementById('speedSlider').addEventListener('input',function(e){
   var v=parseInt(e.target.value);autoMoveInterval_ms=speedToMs(v);
   document.getElementById('speedVal').textContent=speedLabels[v]||v;_save('speed',v);if(autoMoveActive)startContinuousZoom();
 });
-var zoomLabels=['','ゼロ','極小','やや小','少小','中','少大','やや大','大','極大'];
-function zoomToMin(v){return v===1?breathMax:+(breathMax-(v-1)*1.0).toFixed(1);}
+var zoomLabels=['','ゼロ','0.1°','0.2°','0.3°','0.4°','0.5°','0.6°','0.7°','0.8°'];
+function zoomRangeDeg(v){return v<=1?0:+(((v-1)*0.1).toFixed(1));}
+function zoomToMin(v){return v<=1?breathMax:+(breathMax-zoomRangeDeg(v)).toFixed(2);}
+function migrateZoomSliderValue(v){
+  v=parseInt(v,10);
+  if(isNaN(v)||v<1)return 2;
+  if(v===1)return 1;
+  if(v<=4)return Math.min(9,v+1);
+  return 5;
+}
 document.getElementById('zoomSlider').addEventListener('input',function(e){
   var v=parseInt(e.target.value);breathMin=zoomToMin(v);
-  document.getElementById('zoomVal').textContent=zoomLabels[v]||v;_save('zoom',v);if(autoMoveActive)startContinuousZoom();
+  document.getElementById('zoomVal').textContent=zoomLabels[v]||(zoomRangeDeg(v)+'°');_save('zoom',v);if(autoMoveActive)startContinuousZoom();
 });
 var fadeLabels=['','なし','極小','小','やや小','中','やや大','大','極大','最大'];
 function fadeToPct(v){return(v-1)/8;}
@@ -4063,24 +4455,21 @@ function switchCcChainScene(targetSceneId) {
   switchScene(targetSceneId, v.yaw, v.pitch, v.fov);
 }
 
-function executeMoveByDelta(delta) {
-  if (!currentView || !currentSceneObj) return;
-
+function findSceneIdByDelta(delta) {
+  if (!delta || !currentSceneObj) return null;
   var currentPos = Number(inferScenePosition(currentSceneObj.data));
   var nextPos = currentPos + delta;
   var currentCourse = sceneCourseKey(currentSceneObj.data);
 
   if (currentCourse === 'cc' && CC_CHAIN_SCENE_IDS[nextPos]) {
-    switchCcChainScene(CC_CHAIN_SCENE_IDS[nextPos]);
-    return;
+    return CC_CHAIN_SCENE_IDS[nextPos];
   }
 
   for (var id in scenesData) {
     var sd = scenesData[id].data;
     if (Number(sd.position) === nextPos &&
         sceneCourseKey(sd) === currentCourse) {
-      switchScene(id, getRelativeSceneYaw(id), getRelativeScenePitch(id), currentView.parameters().fov);
-      return;
+      return id;
     }
   }
 
@@ -4088,11 +4477,76 @@ function executeMoveByDelta(delta) {
     var fallbackSd = scenesData[fallbackId].data;
     if (Number(fallbackSd.position) === nextPos &&
         fallbackSd.direction === currentSceneObj.data.direction) {
-      switchScene(fallbackId, getRelativeSceneYaw(fallbackId), getRelativeScenePitch(fallbackId), currentView.parameters().fov);
-      return;
+      return fallbackId;
     }
   }
-  console.warn('⚠️ 次のシーンが見つかりません: course=' + currentCourse + ', position=' + nextPos);
+  return null;
+}
+
+function executeMoveByDelta(delta) {
+  if (!currentView || !currentSceneObj) return;
+  var targetId = findSceneIdByDelta(delta);
+  if (!targetId) {
+    console.warn('⚠️ 次のシーンが見つかりません: course=' + sceneCourseKey(currentSceneObj.data) + ', delta=' + delta);
+    return;
+  }
+  if (sceneCourseKey(currentSceneObj.data) === 'cc') {
+    switchCcChainScene(targetId);
+    return;
+  }
+  switchScene(targetId, getRelativeSceneYaw(targetId), getRelativeScenePitch(targetId), currentView.parameters().fov);
+}
+
+function computeMoveDelta(isUp) {
+  if (!currentSceneObj || !currentView) return 0;
+  if (currentSceneObj.data.direction === 'portal') return 0;
+  var isLookingFront = Math.abs(getGreenArrowViewYawDeg()) <= 90;
+  if (isSideRoute(currentSceneObj.data.id)) {
+    return isUp ? (isLookingFront ? 1 : -1) : (isLookingFront ? -1 : 1);
+  }
+  var delta;
+  if (currentSceneObj.data.direction === 'iki') {
+    delta = isUp ? (isLookingFront ? 1 : -1) : (isLookingFront ? -1 : 1);
+  } else {
+    delta = isUp ? (isLookingFront ? -1 : 1) : (isLookingFront ? 1 : -1);
+  }
+  if (flipDir) delta = -delta;
+  return delta;
+}
+
+function computeAutoMoveIsUpForDelta(wantDelta) {
+  if (!currentSceneObj || !currentView) return true;
+  var isLookingFront = Math.abs(getGreenArrowViewYawDeg()) <= 90;
+  var want = wantDelta;
+  if (flipDir) want = -want;
+  var dir = currentSceneObj.data.direction;
+  if (dir === 'iki') {
+    if (want === 1) return isLookingFront;
+    if (want === -1) return !isLookingFront;
+  } else if (dir === 'kaeri') {
+    if (want === 1) return !isLookingFront;
+    if (want === -1) return isLookingFront;
+  }
+  return true;
+}
+
+function peekNextSceneIdForMove(isUp) {
+  if (!currentSceneObj) return null;
+  if (isSideRoute(currentSceneObj.data.id)) {
+    var isLookingFront = Math.abs(getGreenArrowViewYawDeg()) <= 90;
+    var chainDelta = isUp ? (isLookingFront ? 1 : -1) : (isLookingFront ? -1 : 1);
+    return findSideRouteChainSceneId(chainDelta);
+  }
+  return findSceneIdByDelta(computeMoveDelta(isUp));
+}
+
+function sceneYellowAutoMoveEnabled(sceneData) {
+  return !!(sceneData && sceneData.yellowAutoMove === true);
+}
+
+/** 黄矢印の「正面」＝左右90°以内（振り向きは背面扱い） */
+function isYellowLookingForward() {
+  return Math.abs(getGreenArrowViewYawDeg()) <= 90;
 }
 
 function getSceneInitialYaw(sceneId, fallbackYaw) {
@@ -4841,6 +5295,16 @@ function getSceneInterstitialConfig(sceneData, isUp) {
 }
 
 function executeMoveWithSideBranch(isUp) {
+  // 振り向いて黄矢印で戻るときは、到着後のマップ指定自動再生を抑止（長押し自動は従来どおり）
+  if (!isUp && isYellowLookingForward()) {
+    // 正面のまま下矢印1回＝1コマ戻り。到着先が自動区間でも勝手に前進しない
+    yellowAutoMovePaused = true;
+    if (yellowAutoMoveTimer) { clearTimeout(yellowAutoMoveTimer); yellowAutoMoveTimer = null; }
+    if (yellowAutoMoveStartTimer) { clearTimeout(yellowAutoMoveStartTimer); yellowAutoMoveStartTimer = null; }
+  } else {
+    yellowAutoMovePaused = !isYellowLookingForward();
+  }
+  markYellowAutoEnterViaArrowIfForward(isUp);
   var dir = isUp ? 'up' : 'down';
   if (currentSceneObj && isSideRoute(currentSceneObj.data.id)) {
     var isLookingFront = Math.abs(getGreenArrowViewYawDeg()) <= 90;
@@ -4996,6 +5460,89 @@ var autoMoveInterval_ms=1875;
 var breathMax=75,breathMin=75,breathFov=breathMax,autoFadePct;
 var autoMoveTimer=null,autoMoveInterval=null,autoZoomInterval=null;
 var autoMoveActive=false,autoStepping=false;
+var yellowAutoMovePaused=false;
+var yellowAutoMoveRangeLimited=false;
+var yellowAutoMoveEnterViaArrow=false;
+var yellowAutoMoveTimer=null;
+var yellowAutoMoveStartTimer=null;
+
+function markYellowAutoEnterViaArrowIfForward(isUp) {
+  if (!isUp || !isYellowLookingForward() || !currentSceneObj || !currentView) return;
+  if (yellowAutoMovePaused) return;
+  var delta = computeMoveDelta(isUp);
+  if (!delta) return;
+  var targetId = findSceneIdByDelta(delta);
+  if (targetId && scenesData[targetId] && sceneYellowAutoMoveEnabled(scenesData[targetId].data)) {
+    yellowAutoMoveEnterViaArrow = true;
+  }
+}
+
+function scheduleYellowAutoMoveAfterSwitch(sceneId, crossfadeDur) {
+  if (yellowAutoMoveTimer) {
+    clearTimeout(yellowAutoMoveTimer);
+    yellowAutoMoveTimer = null;
+  }
+  if (yellowAutoMoveStartTimer) {
+    clearTimeout(yellowAutoMoveStartTimer);
+    yellowAutoMoveStartTimer = null;
+  }
+  if (typeof embedPlacerMode !== 'undefined' && embedPlacerMode) return;
+  if (autoMoveActive) return;
+  var viaArrow = yellowAutoMoveEnterViaArrow;
+  yellowAutoMoveEnterViaArrow = false;
+  // 黄矢印1回で自動区間へ: フェード中からズーム＋間隔タイマー開始（14以降と同じリズム）
+  // マップ等からの入室: 向き再適用後すぐ（500ms の長押し待ちは不要）
+  var wait = viaArrow ? 0 : Math.max(80, (crossfadeDur || 700) + 80);
+  yellowAutoMoveTimer = setTimeout(function() {
+    yellowAutoMoveTimer = null;
+    if (!currentSceneObj || currentSceneObj.data.id !== sceneId) return;
+    if (autoMoveActive || yellowAutoMovePaused) return;
+    maybeStartYellowAutoMove(true);
+  }, wait);
+}
+
+function maybeStartYellowAutoMove(skipHoldDelay) {
+  if (typeof embedPlacerMode !== 'undefined' && embedPlacerMode) return;
+  if (autoMoveActive || yellowAutoMovePaused) return;
+  if (!currentSceneObj || !currentView) return;
+  if (!sceneYellowAutoMoveEnabled(currentSceneObj.data)) return;
+  if (currentSceneObj.data.direction === 'portal') return;
+  if (!isYellowLookingForward()) return;
+  var isUp = computeAutoMoveIsUpForDelta(1);
+  var nextId = peekNextSceneIdForMove(isUp);
+  if (!nextId || !scenesData[nextId] || !sceneYellowAutoMoveEnabled(scenesData[nextId].data)) {
+    return;
+  }
+  if (yellowAutoMoveStartTimer) clearTimeout(yellowAutoMoveStartTimer);
+  if (skipHoldDelay) {
+    yellowAutoMoveRangeLimited = true;
+    startYellowAutoMove(isUp);
+    return;
+  }
+  yellowAutoMoveStartTimer = setTimeout(function() {
+    yellowAutoMoveStartTimer = null;
+    if (autoMoveActive || yellowAutoMovePaused) return;
+    if (!currentSceneObj || !currentView) return;
+    if (!sceneYellowAutoMoveEnabled(currentSceneObj.data)) return;
+    if (!isYellowLookingForward()) return;
+    yellowAutoMoveRangeLimited = true;
+    startYellowAutoMove(isUp);
+  }, 500);
+}
+
+function startYellowAutoMove(isUp) {
+  if (autoMoveActive || !currentView || !currentSceneObj) return;
+  if (trySceneInterstitialOnLongPress(!!isUp)) return;
+  autoMoveActive = true;
+  autoFadePct = readAutoFadePctFromSlider();
+  var startYaw = currentView.parameters().yaw;
+  if (isUp) startContinuousZoom();
+  autoMoveInterval = setInterval(function() {
+    autoStepOnce(isUp, startYaw);
+  }, autoMoveInterval_ms);
+  console.log('▶ 黄矢印 自動連続再生開始: ' + currentSceneObj.data.id +
+    (yellowAutoMoveRangeLimited ? '（指定区間・長押しと同じ動き）' : ''));
+}
 
 // 自動再生設定は作品を開き直しても勝手に戻らないよう、専用キーで固定保存する。
 function _ck(){return 'marzipano_auto_settings_v3_';}
@@ -5004,14 +5551,14 @@ function _load(k,def){try{var v=localStorage.getItem(_ck()+k);return v!==null?v:
 
 function applyAutoMoveSettings() {
   var s=Math.max(1,Math.min(9,parseInt(_load('speed','6'))));
-  var z=Math.max(1,Math.min(9,parseInt(_load('zoom','2'))));
+  var z=migrateZoomSliderValue(_load('zoom','2'));
   var f=Math.max(1,Math.min(9,parseInt(_load('fade','8'))));
   document.getElementById('speedSlider').value=s;
   autoMoveInterval_ms=speedToMs(s);
   document.getElementById('speedVal').textContent=speedLabels[s]||s;
   document.getElementById('zoomSlider').value=z;
   breathMin=zoomToMin(z);
-  document.getElementById('zoomVal').textContent=zoomLabels[z]||z;
+  document.getElementById('zoomVal').textContent=zoomLabels[z]||(zoomRangeDeg(z)+'°');
   document.getElementById('fadeSlider').value=f;
   autoFadePct=fadeToPct(f);
   document.getElementById('fadeVal').textContent=fadeLabels[f]||f;
@@ -5026,39 +5573,66 @@ function readAutoFadePctFromSlider() {
 
 function startContinuousZoom(){
   if(autoZoomInterval){clearInterval(autoZoomInterval);autoZoomInterval=null;}
-  breathFov=breathMax;
-  if(currentView)currentView.setParameters({fov:degToRad(breathFov)});
+  if(!currentView)return;
   var stepMs=50,range=breathMax-breathMin;
   if(range<=0)return;
-  var degsPerStep=range/(autoMoveInterval_ms/stepMs);
+  var curFov=radToDeg(currentView.parameters().fov);
+  var breathFov,endFov;
+  if(curFov<breathMin-0.05){
+    breathFov=curFov;
+    endFov=curFov-range;
+  }else{
+    endFov=Math.max(breathMin-0.05,curFov-range);
+    breathFov=curFov;
+    if(breathFov-endFov<0.01){endFov=breathFov;}
+  }
+  if(Math.abs(breathFov-endFov)<0.005)return;
+  var degsPerStep=Math.abs(breathFov-endFov)/(autoMoveInterval_ms/stepMs);
   autoZoomInterval=setInterval(function(){
     if(!autoMoveActive||!currentView){clearInterval(autoZoomInterval);autoZoomInterval=null;return;}
-    breathFov-=degsPerStep;
-    if(breathFov<breathMin-0.05)breathFov=breathMin-0.05;
+    if(breathFov>endFov){
+      breathFov-=degsPerStep;
+      if(breathFov<endFov)breathFov=endFov;
+    }
     currentView.setParameters({fov:degToRad(breathFov)});
   },stepMs);
 }
-function stopAutoMove(){if(autoMoveTimer){clearTimeout(autoMoveTimer);autoMoveTimer=null;}
+function stopAutoMove(fromUser){
+  if(fromUser) yellowAutoMovePaused = true;
+  if(autoMoveTimer){clearTimeout(autoMoveTimer);autoMoveTimer=null;}
+  if(yellowAutoMoveStartTimer){clearTimeout(yellowAutoMoveStartTimer);yellowAutoMoveStartTimer=null;}
   if(autoMoveInterval){clearInterval(autoMoveInterval);autoMoveInterval=null;}
   if(autoZoomInterval){clearInterval(autoZoomInterval);autoZoomInterval=null;}
   autoMoveActive=false;autoStepping=false;
+  yellowAutoMoveRangeLimited=false;
   breathFov=breathMax;
   if(currentView)currentView.setParameters({fov:degToRad(breathFov)});}
 function autoStepOnce(isUp,startYaw){if(!autoMoveActive||autoStepping)return;
-  if(Math.abs(radToDeg(normalizeAngle(currentView.parameters().yaw-startYaw)))>90){stopAutoMove();return;}
+  if(Math.abs(radToDeg(normalizeAngle(currentView.parameters().yaw-startYaw)))>90){stopAutoMove(false);return;}
+  if (yellowAutoMoveRangeLimited && !isYellowLookingForward()) {
+    stopAutoMove(false);
+    return;
+  }
   autoStepping=true;if(autoZoomInterval){clearInterval(autoZoomInterval);autoZoomInterval=null;}
   var sceneBefore=currentSceneObj;executeMove(isUp);
-  if(currentSceneObj===sceneBefore){stopAutoMove();return;}
-  autoStepping=false;if(isUp)startContinuousZoom();}
+  if(currentSceneObj===sceneBefore){stopAutoMove(false);return;}
+  autoStepping=false;
+  if (yellowAutoMoveRangeLimited) {
+    var nextId = peekNextSceneIdForMove(isUp);
+    if (!nextId || !scenesData[nextId] || !sceneYellowAutoMoveEnabled(scenesData[nextId].data)) {
+      stopAutoMove(false);
+      return;
+    }
+  }
+  if(isUp)startContinuousZoom();}
 function setupArrow(btnId,isUp){var btn=document.getElementById(btnId);
-  function onPress(){if(autoMoveActive){stopAutoMove();return;}
+  function onPress(){if(autoMoveActive){stopAutoMove(true);return;}
     autoMoveTimer=setTimeout(function(){
       autoMoveTimer=null;
       if(trySceneInterstitialOnLongPress(isUp)) return;
-      autoMoveActive=true;
-      autoFadePct=readAutoFadePctFromSlider();
-      var startYaw=currentView.parameters().yaw;if(isUp)startContinuousZoom();
-      autoMoveInterval=setInterval(function(){autoStepOnce(isUp,startYaw);},autoMoveInterval_ms);
+      yellowAutoMovePaused = false;
+      yellowAutoMoveRangeLimited = false;
+      startYellowAutoMove(isUp);
     },500);}
   function onRelease(){if(autoMoveTimer){clearTimeout(autoMoveTimer);autoMoveTimer=null;
     if(!autoMoveActive)executeMoveWithSideBranch(isUp);}}
@@ -5096,11 +5670,11 @@ function executeMoveSimple(isUp) {
 
 // 左右矢印と緑矢印のみ click イベント
 document.getElementById('arrowLeft').addEventListener('click', function() {
-  if (autoMoveActive) { stopAutoMove(); return; }
+  if (autoMoveActive) { stopAutoMove(true); return; }
   executeSideMove('left');
 });
 document.getElementById('arrowRight').addEventListener('click', function() {
-  if (autoMoveActive) { stopAutoMove(); return; }
+  if (autoMoveActive) { stopAutoMove(true); return; }
   executeSideMove('right');
 });
 
