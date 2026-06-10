@@ -364,6 +364,31 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
   height: auto;
   mix-blend-mode: multiply;
 }
+/* extended 影：人物の後ろ・通常合成（multiply だと最低濃さでも暗すぎる） */
+.scene-video-shadow-screen-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  mix-blend-mode: normal;
+  transform-origin: 50% 50%;
+}
+body.embed-shadow .scene-video-shadow-screen-overlay {
+  z-index: 0;
+  mix-blend-mode: normal;
+}
+body.embed-shadow .scene-video-2d-wrap {
+  position: relative;
+  z-index: 12;
+  isolation: isolate;
+}
+.scene-video-shadow-screen-overlay img.foot-shadow-png {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
 /* 全作品共通：足元のごく薄いフェード（楕円・multiply は iPad で境目が出るため使わない） */
 .scene-video-foot-fade {
   position: absolute;
@@ -900,7 +925,7 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-08-footShadowPaint7';
+var BUILD_STAMP = '2026-06-10-footShadowPaint21';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
@@ -2268,6 +2293,7 @@ function destroySceneVideoHotspots(handles) {
   (window.sceneVideoEls || []).forEach(function(item) {
     cleanupGuideViewPlayListener(item);
     stopGuideCanvasMatte(item);
+    destroyEntryGroundShadow(item);
   });
   var list = handles || window.sceneVideoHotspotHandles || [];
   if (!handles) {
@@ -2701,16 +2727,27 @@ function resolveFootShadowImagePath(vh) {
 }
 
 function guideFootShadowEnabled(vh) {
-  return !!(vh && vh.footShadow === true && resolveFootShadowImagePath(vh));
+  if (!vh || vh.footShadow !== true) return false;
+  if (embedShadowMode) return true;
+  return !!resolveFootShadowImagePath(vh);
+}
+
+function footShadowExtendedRange(vh) {
+  if (embedShadowMode) return true;
+  var cfg = vh && vh.footShadowConfig;
+  if (!cfg) return false;
+  return cfg.extended !== false;
 }
 
 function resolveFootShadowConfig(vh) {
   var cfg = (vh && vh.footShadowConfig && typeof vh.footShadowConfig === 'object') ? vh.footShadowConfig : {};
+  var extended = footShadowExtendedRange(vh);
   return {
+    extended: extended,
     widthPx: cfg.widthPx != null ? parseInt(cfg.widthPx, 10) : 240,
     offsetYawDeg: cfg.offsetYawDeg != null ? parseFloat(cfg.offsetYawDeg) : 0,
     offsetPitchDeg: cfg.offsetPitchDeg != null ? parseFloat(cfg.offsetPitchDeg) : 0,
-    opacity: Math.max(0.02, Math.min(1, parseFloat(cfg.opacity != null ? cfg.opacity : 0.7))),
+    opacity: Math.max(0.01, Math.min(1, parseFloat(cfg.opacity != null ? cfg.opacity : 0.7))),
     blurPx: cfg.blurPx != null ? parseInt(cfg.blurPx, 10) : 0,
     rotateDeg: cfg.rotateDeg != null ? parseFloat(cfg.rotateDeg) : 0,
     scaleX: cfg.scaleX != null ? parseFloat(cfg.scaleX) : 1,
@@ -2740,6 +2777,19 @@ function destroyEntryGroundShadow(entry) {
     entry.groundShadowHotspotHandle = null;
   }
   entry.groundShadowEl = null;
+  if (entry.shadowScreenOverlayEl && entry.shadowScreenOverlayEl.parentNode) {
+    try { entry.shadowScreenOverlayEl.parentNode.removeChild(entry.shadowScreenOverlayEl); } catch (eRm) {}
+  }
+  entry.shadowScreenOverlayEl = null;
+}
+
+function footShadowImgSrc(imgPath) {
+  var src = imgPath || '';
+  if (!src) return '';
+  if (src.indexOf('data:') !== 0 && src.indexOf('?') < 0) {
+    src += '?v=' + encodeURIComponent(BUILD_STAMP);
+  }
+  return src;
 }
 
 function paintGuideGroundShadowElement(el, c, imgPath) {
@@ -2752,15 +2802,16 @@ function paintGuideGroundShadowElement(el, c, imgPath) {
     img.draggable = false;
     el.appendChild(img);
   }
-  var src = imgPath;
-  if (src.indexOf('data:') !== 0 && src.indexOf('?') < 0) {
-    src += '?v=' + encodeURIComponent(BUILD_STAMP);
+  var src = footShadowImgSrc(imgPath);
+  if (!src) {
+    img.removeAttribute('src');
+  } else if (img.getAttribute('src') !== src) {
+    img.setAttribute('src', src);
   }
-  if (img.getAttribute('src') !== src) img.setAttribute('src', src);
   var widthPx = Math.max(20, c.widthPx || 240);
   img.style.width = widthPx + 'px';
   img.style.height = 'auto';
-  img.style.opacity = String(Math.max(0.02, Math.min(1, c.opacity != null ? c.opacity : 0.75)));
+  img.style.opacity = String(Math.max(0.01, Math.min(1, c.opacity != null ? c.opacity : 0.75)));
   var blur = Math.max(0, Math.min(30, c.blurPx || 0));
   img.style.filter = blur > 0 ? ('blur(' + blur + 'px)') : 'none';
   var sx = c.scaleX != null ? c.scaleX : 1;
@@ -2768,17 +2819,255 @@ function paintGuideGroundShadowElement(el, c, imgPath) {
   img.style.transform = 'rotate(' + (c.rotateDeg || 0) + 'deg) scale(' + sx + ',' + sy + ')';
 }
 
-function computeGuideFootPitchBaseDeg(entry) {
+function paintShadowScreenOverlayStyles(el, c) {
+  if (!el) return;
+  var img = el.querySelector('img.foot-shadow-png');
+  if (!img) return;
+  img.style.opacity = String(Math.max(0.01, Math.min(1, c.opacity != null ? c.opacity : 0.75)));
+  var blur = Math.max(0, Math.min(30, c.blurPx != null ? parseInt(c.blurPx, 10) : 0));
+  img.style.filter = blur > 0 ? ('blur(' + blur + 'px)') : 'none';
+  var rot = c.rotateDeg || 0;
+  el.style.transform = rot ? ('rotate(' + rot + 'deg)') : '';
+}
+
+function shadowScreenOverlayMountPoint() {
+  var panoEl = document.getElementById('pano');
+  if (!panoEl) return { parent: null, before: null };
+  if (currentScene && currentScene.hotspotContainer) {
+    try {
+      var hc = currentScene.hotspotContainer().domElement();
+      if (hc && hc.parentNode === panoEl) return { parent: panoEl, before: hc };
+    } catch (eHc) {}
+  }
+  return { parent: panoEl, before: null };
+}
+
+function mountShadowScreenOverlayEl(el) {
+  var mount = shadowScreenOverlayMountPoint();
+  if (!mount.parent || !el) return;
+  if (el.parentNode !== mount.parent) {
+    if (mount.before) mount.parent.insertBefore(el, mount.before);
+    else mount.parent.appendChild(el);
+  } else if (mount.before && el.nextSibling !== mount.before) {
+    mount.parent.insertBefore(el, mount.before);
+  }
+}
+
+function paintShadowScreenOverlayElement(el, c, imgPath) {
+  var img = el.querySelector('img.foot-shadow-png');
+  if (!img) {
+    img = document.createElement('img');
+    img.className = 'foot-shadow-png';
+    img.alt = '';
+    img.draggable = false;
+    el.appendChild(img);
+  }
+  paintShadowScreenOverlayStyles(el, c);
+  var src = footShadowImgSrc(imgPath);
+  if (!src) {
+    img.removeAttribute('src');
+    img.src = '';
+    return;
+  }
+  var entry = window.sceneVideoEls && window.sceneVideoEls[0];
+  if (!entry) {
+    if (img.src !== src) img.src = src;
+    return;
+  }
+  compositeShadowPngWithPersonHole(entry, src, function(outSrc) {
+    if (!outSrc) {
+      img.removeAttribute('src');
+      img.src = '';
+      return;
+    }
+    img.src = outSrc;
+  });
+}
+
+function buildPersonAlphaSilhouette(entry) {
+  var src = ensureGuidePaintMaskCanvas(entry);
+  if (!src) return null;
+  if (!entry.personAlphaMaskCanvas) {
+    entry.personAlphaMaskCanvas = document.createElement('canvas');
+  }
+  var c = entry.personAlphaMaskCanvas;
+  if (c.width !== src.width) c.width = src.width;
+  if (c.height !== src.height) c.height = src.height;
+  var tmp = document.createElement('canvas');
+  tmp.width = src.width;
+  tmp.height = src.height;
+  var tctx = tmp.getContext('2d');
+  tctx.drawImage(src, 0, 0);
+  var id = tctx.getImageData(0, 0, tmp.width, tmp.height);
+  var ctx = c.getContext('2d');
+  var od = ctx.createImageData(c.width, c.height);
+  var i, a;
+  for (i = 0; i < id.data.length; i += 4) {
+    a = id.data[i + 3];
+    if (a > 72) {
+      od.data[i] = 255;
+      od.data[i + 1] = 255;
+      od.data[i + 2] = 255;
+      od.data[i + 3] = 255;
+    }
+  }
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.putImageData(od, 0, 0);
+  return c;
+}
+
+function compositeShadowPngWithPersonHole(entry, shadowSrc, done, retry) {
+  if (!entry || !entry.wrap || !shadowSrc) {
+    if (done) done(shadowSrc || '');
+    return;
+  }
+  var tries = retry != null ? retry : 0;
+  var maskC = buildPersonAlphaSilhouette(entry);
+  if (!maskC) {
+    if (tries < 8) {
+      setTimeout(function() {
+        compositeShadowPngWithPersonHole(entry, shadowSrc, done, tries + 1);
+      }, 250);
+      return;
+    }
+    if (embedShadowMode) {
+      if (done) done('');
+      return;
+    }
+    if (done) done(shadowSrc);
+    return;
+  }
+  var wrapR = entry.wrap.getBoundingClientRect();
+  if (!wrapR.width || !wrapR.height) {
+    if (done) done(shadowSrc);
+    return;
+  }
+  var mapR = computeTallShadowMapRect(wrapR);
+  var iw = Math.max(8, Math.round(mapR.width));
+  var ih = Math.max(8, Math.round(mapR.height));
+  if (!entry.shadowCompositeCanvas) {
+    entry.shadowCompositeCanvas = document.createElement('canvas');
+  }
+  var c = entry.shadowCompositeCanvas;
+  if (c.width !== iw) c.width = iw;
+  if (c.height !== ih) c.height = ih;
+  var ctx = c.getContext('2d');
+  var shadowIm = new Image();
+  shadowIm.onload = function() {
+    ctx.clearRect(0, 0, iw, ih);
+    ctx.drawImage(shadowIm, 0, 0, iw, ih);
+    var gx = (wrapR.left - mapR.left) / mapR.width * iw;
+    var gy = (wrapR.top - mapR.top) / mapR.height * ih;
+    var gw = wrapR.width / mapR.width * iw;
+    var gh = wrapR.height / mapR.height * ih;
+    var inset = Math.max(1, Math.round(gw / Math.max(1, wrapR.width)));
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.drawImage(
+      maskC, 0, 0, maskC.width, maskC.height,
+      gx + inset, gy + inset, Math.max(4, gw - inset * 2), Math.max(4, gh - inset * 2)
+    );
+    ctx.globalCompositeOperation = 'source-over';
+    try {
+      if (done) done(c.toDataURL('image/png'));
+    } catch (eCmp) {
+      if (done) done(shadowSrc);
+    }
+  };
+  shadowIm.onerror = function() {
+    if (done) done(shadowSrc);
+  };
+  shadowIm.src = shadowSrc;
+}
+
+function updateShadowOverlayPersonMask(entry, el) {
+  if (!el) return;
+  el.style.webkitMaskImage = '';
+  el.style.maskImage = '';
+}
+
+function updateShadowScreenOverlayGeometry(entry) {
+  var panoEl = document.getElementById('pano');
+  if (!panoEl || !entry || !entry.wrap || !entry.shadowScreenOverlayEl) return;
+  var wrapR = entry.wrap.getBoundingClientRect();
+  if (!wrapR.width || !wrapR.height) return;
+  var mapR = computeTallShadowMapRect(wrapR);
+  var panoR = panoEl.getBoundingClientRect();
+  var el = entry.shadowScreenOverlayEl;
+  el.style.left = (mapR.left - panoR.left) + 'px';
+  el.style.top = (mapR.top - panoR.top) + 'px';
+  el.style.width = mapR.width + 'px';
+  el.style.height = mapR.height + 'px';
+  updateShadowOverlayPersonMask(entry, el);
+}
+
+function updateShadowScreenOverlay(entry, c, imgPath) {
+  var panoEl = document.getElementById('pano');
+  if (!panoEl || !entry || !entry.wrap) return;
+  var wrapR = entry.wrap.getBoundingClientRect();
+  if (!wrapR.width || !wrapR.height) return;
+  var el = entry.shadowScreenOverlayEl;
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'scene-video-shadow-screen-overlay';
+    entry.shadowScreenOverlayEl = el;
+    attachShadowScreenOverlaySync(entry);
+  }
+  mountShadowScreenOverlayEl(el);
+  updateShadowScreenOverlayGeometry(entry);
+  paintShadowScreenOverlayElement(el, c, imgPath);
+}
+
+var shadowScreenRefreshTimer = 0;
+function scheduleShadowScreenOverlayRefresh() {
+  if (shadowScreenRefreshTimer) clearTimeout(shadowScreenRefreshTimer);
+  shadowScreenRefreshTimer = setTimeout(function() {
+    shadowScreenRefreshTimer = 0;
+    var entry = window.sceneVideoEls && window.sceneVideoEls[0];
+    if (entry) refreshShadowScreenOverlay(entry);
+  }, 70);
+}
+
+function attachShadowScreenOverlaySync(entry) {
+  if (!entry || entry.shadowScreenViewHooked) return;
+  if (!currentScene || !currentScene.view()) return;
+  entry.shadowScreenViewHooked = true;
+  currentScene.view().addEventListener('change', scheduleShadowScreenOverlayRefresh);
+}
+
+function refreshShadowScreenOverlay(entry) {
+  if (!entry) return;
+  var vh = shadowPreviewHotspot || entry.vh;
+  if (!vh || !footShadowExtendedRange(vh)) return;
+  var c = suggestFootShadowConfigForEntry(entry, resolveFootShadowConfig(vh));
+  var imgPath = resolveFootShadowImagePath(vh);
+  if (!entry.shadowScreenOverlayEl) {
+    if (!imgPath) return;
+    updateShadowScreenOverlay(entry, c, imgPath);
+    return;
+  }
+  updateShadowScreenOverlayGeometry(entry);
+  if (imgPath) {
+    paintShadowScreenOverlayElement(entry.shadowScreenOverlayEl, c, imgPath);
+  } else {
+    paintShadowScreenOverlayStyles(entry.shadowScreenOverlayEl, c);
+  }
+}
+
+function computeGuideFootPitchBaseDeg(entry, extended) {
   if (!entry) return 0;
   var h = entry.guideH || (entry.wrap ? parseInt(entry.wrap.style.height, 10) : 0) || 380;
   var radius = entry.guideRadius || 850;
+  if (extended) {
+    var midDrop = h * 0.34 + 18;
+    return radToDeg(Math.atan(midDrop / Math.max(200, radius))) + 4;
+  }
   var footDrop = h * 0.52 + 28;
   return radToDeg(Math.atan(footDrop / Math.max(200, radius))) + 6;
 }
 
 function guideShadowPlacePosition(entry, c) {
   var yawDelta = degToRad(c.offsetYawDeg);
-  var pitchBase = computeGuideFootPitchBaseDeg(entry);
+  var pitchBase = computeGuideFootPitchBaseDeg(entry, c.extended);
   var pitchDelta = degToRad(pitchBase + (c.offsetPitchDeg || 0));
   return {
     yaw: entry.guidePlaceYaw + yawDelta,
@@ -2794,7 +3083,26 @@ function applyGuideGroundShadow(entry, vh) {
     return;
   }
   if (entry.guidePlaceYaw == null || entry.guidePlacePitch == null) return;
-  var c = resolveFootShadowConfig(vh);
+  entry.vh = vh;
+  var c = suggestFootShadowConfigForEntry(entry, resolveFootShadowConfig(vh));
+  if (c.extended) {
+    if (entry.groundShadowHotspotHandle) {
+      try {
+        if (typeof entry.groundShadowHotspotHandle.destroy === 'function') {
+          entry.groundShadowHotspotHandle.destroy();
+        }
+      } catch (eHs) {}
+      entry.groundShadowHotspotHandle = null;
+      entry.groundShadowEl = null;
+    }
+    updateShadowScreenOverlay(entry, c, imgPath);
+    scheduleShadowPaintLayoutPost();
+    return;
+  }
+  if (entry.shadowScreenOverlayEl && entry.shadowScreenOverlayEl.parentNode) {
+    try { entry.shadowScreenOverlayEl.parentNode.removeChild(entry.shadowScreenOverlayEl); } catch (eOv) {}
+    entry.shadowScreenOverlayEl = null;
+  }
   var radius = entry.guideRadius || 850;
   var pos = guideShadowPlacePosition(entry, c);
   if (entry.groundShadowEl && entry.groundShadowHotspotHandle) {
@@ -2828,7 +3136,7 @@ function ensureGuidePaintMaskCanvas(entry) {
   if (!vw || !vh) return null;
   var wrapW = entry.guideW || parseInt(entry.wrap.style.width, 10) || 280;
   var wrapH = entry.guideH || parseInt(entry.wrap.style.height, 10) || 380;
-  var cw = 160;
+  var cw = 240;
   var ch = Math.max(40, Math.round(cw * wrapH / wrapW));
   if (!entry.shadowPaintMaskCanvas) {
     entry.shadowPaintMaskCanvas = document.createElement('canvas');
@@ -2862,7 +3170,7 @@ function estimateShadowScreenRect(entry, wrapR) {
   };
 }
 
-function computeShadowPaintRegion(wrapR, shadowR) {
+function computeFootOnlyPaintRegion(wrapR, shadowR) {
   var h = wrapR.height || 380;
   var w = wrapR.width || 280;
   var region = {
@@ -2880,18 +3188,112 @@ function computeShadowPaintRegion(wrapR, shadowR) {
   return region;
 }
 
+/** 影PNGの画面マップ（足元～頭上まで。人物動画ではなく地面レイヤー用） */
+function computeTallShadowMapRect(wrapR) {
+  var h = wrapR.height || 380;
+  var w = wrapR.width || 280;
+  var topMargin = h * 0.38;
+  var sideMargin = w * 0.28;
+  var bottomMargin = h * 0.14;
+  return {
+    left: wrapR.left - sideMargin,
+    top: wrapR.top - topMargin,
+    width: w + sideMargin * 2,
+    height: h + topMargin + bottomMargin
+  };
+}
+
+function expandPaintHitRect(mapR, marginPx) {
+  var m = marginPx != null ? marginPx : 24;
+  return {
+    left: mapR.left - m,
+    top: mapR.top - m,
+    width: mapR.width + m * 2,
+    height: mapR.height + m * 2
+  };
+}
+
+function suggestFootShadowConfigForEntry(entry, cfg) {
+  cfg = cfg || {};
+  if (!footShadowExtendedRange(entry.vh || {})) return cfg;
+  var wrapW = entry.guideW || (entry.wrap ? parseInt(entry.wrap.style.width, 10) : 0) || 280;
+  var wrapH = entry.guideH || (entry.wrap ? parseInt(entry.wrap.style.height, 10) : 0) || 380;
+  var out = {
+    extended: true,
+    widthPx: cfg.widthPx != null ? cfg.widthPx : Math.round(wrapW * 1.55),
+    offsetYawDeg: cfg.offsetYawDeg != null ? cfg.offsetYawDeg : 0,
+    offsetPitchDeg: cfg.offsetPitchDeg != null ? cfg.offsetPitchDeg : -14,
+    opacity: cfg.opacity != null ? cfg.opacity : (embedShadowMode ? 0.25 : 0.5),
+    blurPx: cfg.blurPx != null ? parseInt(cfg.blurPx, 10) : 4,
+    rotateDeg: cfg.rotateDeg != null ? cfg.rotateDeg : 0,
+    scaleX: cfg.scaleX != null ? cfg.scaleX : 1.15,
+    scaleY: cfg.scaleY != null ? cfg.scaleY : 2.8
+  };
+  if (wrapH > 900) out.scaleY = cfg.scaleY != null ? cfg.scaleY : 3.2;
+  if (embedShadowMode) {
+    out.widthPx = Math.max(out.widthPx, Math.round(wrapW * 1.5));
+    if ((cfg.scaleY == null || cfg.scaleY < 2) && out.scaleY < 2.4) out.scaleY = 2.8;
+    if (cfg.offsetPitchDeg == null || cfg.offsetPitchDeg > -5) out.offsetPitchDeg = -14;
+  }
+  return out;
+}
+
+function buildShadowPaintLayoutFallback() {
+  var sw = window.innerWidth || 800;
+  var sh = window.innerHeight || 600;
+  var gw = Math.max(180, Math.min(420, sw * 0.28));
+  var gh = Math.round(gw * 1.36);
+  var cx = sw * 0.5;
+  var cy = sh * 0.56;
+  var guide = {
+    left: cx - gw * 0.5,
+    top: cy - gh * 0.5,
+    width: gw,
+    height: gh
+  };
+  var map = {
+    left: guide.left - gw * 0.28,
+    top: guide.top - gh * 0.38,
+    width: gw * 1.56,
+    height: gh * 1.52
+  };
+  return {
+    sceneW: sw,
+    sceneH: sh,
+    guideRect: guide,
+    shadowRect: map,
+    paintRegion: expandPaintHitRect(map, 96),
+    paintMapRect: map,
+    footPitchBaseDeg: 0,
+    suggestedConfig: null,
+    maskDataUrl: '',
+    maskW: 0,
+    maskH: 0,
+    layoutFallback: true
+  };
+}
+
 function buildShadowPaintLayout() {
   var entry = window.sceneVideoEls && window.sceneVideoEls[0];
-  if (!entry || !entry.wrap) return null;
+  if (!entry || !entry.wrap) return buildShadowPaintLayoutFallback();
   var wrapR = entry.wrap.getBoundingClientRect();
-  if (!wrapR.width || !wrapR.height) return null;
+  if (!wrapR.width || !wrapR.height) return buildShadowPaintLayoutFallback();
   var shadowR = null;
   if (entry.groundShadowEl) {
     var imgEl = entry.groundShadowEl.querySelector('img.foot-shadow-png');
     shadowR = (imgEl || entry.groundShadowEl).getBoundingClientRect();
   }
-  if (!shadowR || shadowR.width < 8) shadowR = estimateShadowScreenRect(entry, wrapR);
-  var paintRegion = computeShadowPaintRegion(wrapR, shadowR);
+  var extended = footShadowExtendedRange(entry.vh || {});
+  var tallMap = computeTallShadowMapRect(wrapR);
+  if (extended) {
+    shadowR = tallMap;
+  } else if (!shadowR || shadowR.width < 8) {
+    shadowR = estimateShadowScreenRect(entry, wrapR);
+  }
+  var paintMapRect = extended ? tallMap : shadowR;
+  var paintRegion = extended
+    ? expandPaintHitRect(tallMap, 48)
+    : computeFootOnlyPaintRegion(wrapR, shadowR);
   var maskC = ensureGuidePaintMaskCanvas(entry);
   var maskDataUrl = '';
   if (maskC) {
@@ -2909,7 +3311,12 @@ function buildShadowPaintLayout() {
       width: shadowR.width, height: shadowR.height
     },
     paintRegion: paintRegion,
-    footPitchBaseDeg: computeGuideFootPitchBaseDeg(entry),
+    paintMapRect: {
+      left: paintMapRect.left, top: paintMapRect.top,
+      width: paintMapRect.width, height: paintMapRect.height
+    },
+    footPitchBaseDeg: computeGuideFootPitchBaseDeg(entry, footShadowExtendedRange(entry.vh || {})),
+    suggestedConfig: suggestFootShadowConfigForEntry(entry, resolveFootShadowConfig(entry.vh || {})),
     maskDataUrl: maskDataUrl,
     maskW: maskC ? maskC.width : 0,
     maskH: maskC ? maskC.height : 0
@@ -2919,7 +3326,7 @@ function buildShadowPaintLayout() {
 function postShadowPaintLayoutToParent() {
   if (!embedShadowMode || !window.parent || window.parent === window) return;
   var layout = buildShadowPaintLayout();
-  if (!layout) return;
+  if (!layout) layout = buildShadowPaintLayoutFallback();
   try {
     window.parent.postMessage({ type: 'shadowPaintLayout', layout: layout }, '*');
   } catch (ePost) {}
@@ -2930,6 +3337,8 @@ function scheduleShadowPaintLayoutPost() {
   if (shadowPaintLayoutTimer) clearTimeout(shadowPaintLayoutTimer);
   shadowPaintLayoutTimer = setTimeout(function() {
     shadowPaintLayoutTimer = 0;
+    var entry = window.sceneVideoEls && window.sceneVideoEls[0];
+    if (entry && entry.shadowScreenOverlayEl) updateShadowScreenOverlayGeometry(entry);
     postShadowPaintLayoutToParent();
   }, 70);
 }
@@ -3896,6 +4305,7 @@ function applyShadowPreviewHotspot(hotspot, sceneId) {
   if (currentSceneObj && currentSceneObj.data.id === sid) {
     var entry = window.sceneVideoEls && window.sceneVideoEls[0];
     if (entry && entry.wrap) {
+      entry.vh = hotspot;
       applyGuideFeetFade(entry, hotspot);
       applyGuideGroundShadow(entry, hotspot);
       scheduleShadowPaintLayoutPost();
@@ -3974,7 +4384,7 @@ function attachVideoHotspots(sceneId, sceneData) {
     }
     maskWrap.appendChild(vid);
     wrap.appendChild(maskWrap);
-    var entry = { vid: vid, wrap: wrap, maskWrap: maskWrap, sceneId: sceneId, guidePlaybackDone: false, guideVideoSrc: vh.src || '' };
+    var entry = { vid: vid, wrap: wrap, maskWrap: maskWrap, sceneId: sceneId, vh: vh, guidePlaybackDone: false, guideVideoSrc: vh.src || '' };
     syncHotspotDrawOpts(entry, vh);
     applyGuideVideoMatte(vid, maskWrap, vh, entry);
     applyGuideFeetFade(entry, vh);
@@ -4021,10 +4431,13 @@ function attachVideoHotspots(sceneId, sceneData) {
       function onShadowVidReady() {
         if (entry.guideCanvasCtx) paintGuideCanvasOnce(entry, entry.blackKeyThr);
         scheduleShadowPaintLayoutPost();
+        postShadowPaintLayoutToParent();
       }
       vid.addEventListener('loadeddata', onShadowVidReady);
       vid.addEventListener('seeked', onShadowVidReady);
+      setTimeout(onShadowVidReady, 400);
       setTimeout(onShadowVidReady, 1200);
+      setTimeout(function() { postShadowPaintLayoutToParent(); }, 1800);
     }
     vid.addEventListener('error', function() {
       var hevcHint = guideVideoHevcSrc(vh.src, vh);
@@ -4056,6 +4469,9 @@ function scheduleAttachVideoHotspots(sceneId, sceneData, delayMs) {
     if (embedShadowMode) {
       notifyShadowParentReady();
       attachShadowPaintLayoutSync();
+      if (!window.sceneVideoEls || !window.sceneVideoEls.length) {
+        attachVideoHotspots(sceneId, sceneData);
+      }
       if (shadowPreviewHotspot) {
         applyShadowPreviewHotspot(shadowPreviewHotspot, sceneId);
       } else if (sceneData.videoHotspots && sceneData.videoHotspots[0]) {

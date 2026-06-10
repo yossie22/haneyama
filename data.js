@@ -852,18 +852,8 @@ var APP_DATA = {
           "playYawRange": 18,
           "srcIos": "video/guide_alpha_ios.mp4",
           "srcHevc": "video/ipad2.mp4",
-          "footShadow": true,
-          "footShadowConfig": {
-            "widthPx": 372,
-            "offsetYawDeg": 2.5,
-            "offsetPitchDeg": -16.5,
-            "opacity": 0.62,
-            "blurPx": 29,
-            "rotateDeg": 0,
-            "scaleX": 2.5,
-            "scaleY": 1.4
-          },
-          "footShadowImage": "shadows/18-aa019_foot.png"
+          "footShadow": false,
+          "footShadowConfig": {}
         }
       ],
       "yellowAutoMove": true
@@ -1145,17 +1135,18 @@ var APP_DATA = {
           "srcIos": "video/guide_alpha_ios.mp4",
           "srcHevc": "video/ipad.mp4",
           "footShadow": true,
-          "footShadowImage": "shadows/25-cc003_foot.png",
           "footShadowConfig": {
-            "widthPx": 480,
+            "extended": true,
+            "widthPx": 1220,
             "offsetYawDeg": 0,
-            "offsetPitchDeg": 0.5,
-            "opacity": 0.39,
-            "blurPx": 15,
+            "offsetPitchDeg": -14,
+            "opacity": 0.19,
+            "blurPx": 13,
             "rotateDeg": 0,
-            "scaleX": 1.82,
-            "scaleY": 1.88
-          }
+            "scaleX": 1,
+            "scaleY": 2.8
+          },
+          "footShadowImage": "shadows/25-cc003_foot.png"
         }
       ]
     }
