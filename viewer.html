@@ -25,26 +25,73 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 #crosshair::after { left: 14px; top: 0; width: 2px; height: 30px; }
 
 #compassContainer {
-  position: absolute; top: 20px; right: 20px; display: flex; align-items: center; z-index: 100;
+  position: absolute; top: 62px; right: 14px; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; z-index: 100;
   transition: opacity 0.5s ease; opacity: 0; pointer-events: none;
 }
 #compassContainer.visible { opacity: 1; pointer-events: auto; }
 
-/* 方位計（数値：全シーン共通） */
-#degreeCircle {
-  width: 60px; height: 60px; background: rgba(255,255,255,0.8); border-radius: 50%; border: 3px solid #0066ff;
-  display: flex; flex-direction: column; justify-content: center; align-items: center;
-  font-family: sans-serif; font-weight: bold; font-size: 14px; color: #0066ff;
-  z-index: 102;
+/* ジャイロ（スマホ・iPad・右上・他UIと同様に自動消灯） */
+#gyroButton {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  z-index: 101;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  background: rgba(48, 108, 210, 0.9);
+  color: #fff;
+  font-size: 9px;
+  font-weight: bold;
+  font-family: sans-serif;
+  letter-spacing: -0.3px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+  cursor: pointer;
+  padding: 0;
 }
-#degreeCircle small { font-size: 10px; color: #666; }
+#gyroButton.visible { opacity: 0.88; pointer-events: auto; }
+#gyroButton.is-on { background: rgba(22, 155, 78, 0.94); }
+#gyroButton::after {
+  content: 'v13';
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  font-size: 7px;
+  opacity: 0.85;
+}
+body.gyro-active #pano { touch-action: none; }
 
-/* コンパス（針：データがある時のみ） */
+/* コンパス（針：data.js / マップジェネレータの heading があるシーンのみ） */
 #compassCircle {
-  width: 60px; height: 60px; background: white; border-radius: 50%; border: 3px solid #0066ff;
-  margin-left: 10px; display: none; justify-content: center; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  width: 60px; height: 60px; background: rgba(255,255,255,0.92); border-radius: 50%; border: 3px solid #0066ff;
+  display: none; justify-content: center; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.28);
+  position: relative; flex-shrink: 0; overflow: visible;
 }
 #compassCircle.active { display: flex; }
+#compassCircle .compass-dial,
+#compassCircle .compass-needle {
+  position: absolute; left: 50%; top: 50%; width: 52px; height: 52px;
+  margin-left: -26px; margin-top: -26px;
+  pointer-events: none;
+}
+#compassCircle .compass-needle {
+  transform-origin: 26px 26px;
+  transition: transform 0.12s linear;
+}
+
+/* 画面角度（yaw / pitch：全シーン共通） */
+#degreeCircle {
+  width: 60px; height: 60px; background: rgba(255,255,255,0.92); border-radius: 50%; border: 3px solid #0066ff;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  font-family: sans-serif; font-weight: bold; font-size: 14px; color: #0066ff;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.28); flex-shrink: 0;
+}
+#degreeCircle small { font-size: 10px; color: #666; }
 
 #volumeContainer {
   position: absolute; top: 20px; left: 20px; height: 60px; display: flex; align-items: center;
@@ -532,6 +579,223 @@ body.embed-shadow #pano:active { cursor: grabbing; }
 
 #viewerBuildBadge { display: none !important; }
 
+.hires-peek-zone-host {
+  position: relative;
+  box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: none;
+  transition: opacity var(--ui-soft-fade) ease-out;
+}
+.hires-peek-zone-host.hires-peek-frame-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.hires-peek-soft-zone {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.hires-peek-soft-fill {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.hires-peek-soft-zone.mask-softRect,
+.hires-peek-soft-zone.mask-softEllipse,
+.hires-peek-soft-zone.mask-softCircle,
+.hires-peek-soft-zone.mask-fadeLight,
+.hires-peek-soft-zone.mask-fadeDark {
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+.mask-softRect .hires-peek-soft-fill {
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 14%, #000 86%, transparent),
+    linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 14%, #000 86%, transparent),
+    linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  mask-composite: intersect;
+  background: rgba(255, 255, 255, 0.17);
+  box-shadow: inset 0 0 70px 24px rgba(255, 255, 255, 0.1);
+}
+.mask-softEllipse .hires-peek-soft-fill {
+  -webkit-mask-image: radial-gradient(ellipse 88% 88% at 50% 50%, #000 22%, transparent 72%);
+  mask-image: radial-gradient(ellipse 88% 88% at 50% 50%, #000 22%, transparent 72%);
+  background: rgba(255, 255, 255, 0.14);
+}
+.mask-softCircle .hires-peek-soft-fill {
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 28%, transparent 70%);
+  mask-image: radial-gradient(circle at 50% 50%, #000 28%, transparent 70%);
+  background: rgba(255, 255, 255, 0.13);
+}
+.mask-fadeLight .hires-peek-soft-fill {
+  -webkit-mask-image: radial-gradient(ellipse 92% 92% at 50% 50%, #000 12%, transparent 78%);
+  mask-image: radial-gradient(ellipse 92% 92% at 50% 50%, #000 12%, transparent 78%);
+  background: rgba(255, 255, 255, 0.22);
+}
+.mask-fadeDark .hires-peek-soft-fill {
+  -webkit-mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, #000 18%, transparent 74%);
+  mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, #000 18%, transparent 74%);
+  background: rgba(0, 0, 0, 0.24);
+}
+.hires-peek-soft-zone.tappable {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.hires-peek-zone-host.mode-macro {
+  width: 56px !important;
+  height: 56px !important;
+}
+.hires-peek-zone-host.mode-macro .hires-peek-magnifier {
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.hires-peek-zone-host.hires-peek-blink .hires-peek-soft-fill {
+  animation: hires-peek-zone-pulse 3.4s ease-in-out infinite;
+}
+@keyframes hires-peek-zone-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.hires-peek-magnifier {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  z-index: 4;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  right: -8px;
+  bottom: -8px;
+  left: auto;
+  top: auto;
+}
+.hires-peek-magnifier svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+}
+.hires-peek-magnifier.color-pink { color: #ff4da6; }
+.hires-peek-magnifier.color-green { color: #4de67a; }
+.hires-peek-magnifier.color-gold { color: #f5c518; }
+.hires-peek-zone-host.hires-peek-blink .hires-peek-magnifier {
+  animation: hires-peek-mag-blink 2.8s ease-in-out infinite;
+}
+@keyframes hires-peek-mag-blink {
+  0%, 100% { opacity: 0.38; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+#hiResPeekOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: #000;
+  touch-action: none;
+  display: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 1.2s ease-in-out, visibility 1.2s ease-in-out;
+}
+#hiResPeekOverlay.open {
+  display: block;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+#hiResPeekView {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+#hiResPeekView.is-dragging { cursor: grabbing; }
+#hiResPeekMediaStage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  pointer-events: none;
+}
+#hiResPeekBaseImg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  max-width: none;
+  max-height: none;
+  transform-origin: center center;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: opacity 1.2s ease-in-out;
+}
+.hi-res-peek-video-wrap {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+}
+.hi-res-peek-shadow-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hi-res-peek-shadow-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+.hi-res-peek-video-wrap.matte-lighten .hi-res-peek-overlay-video {
+  mix-blend-mode: lighten;
+  -webkit-mix-blend-mode: lighten;
+}
+.hi-res-peek-overlay-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  background: transparent;
+}
+#hiResPeekVrBtn {
+  position: absolute;
+  bottom: 30px;
+  left: 20px;
+  width: 70px;
+  height: 70px;
+  cursor: pointer;
+  z-index: 12;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+  object-fit: contain;
+  mix-blend-mode: normal;
+}
+#hiResPeekVrBtn.visible {
+  opacity: 0.85;
+  pointer-events: auto;
+}
+#hiResPeekHint {
+  display: none;
+}
+body.embed-placer #hiResPeekOverlay,
+body.embed-shadow #hiResPeekOverlay { display: none !important; }
+
 </style>
 </head>
 
@@ -547,15 +811,22 @@ body.embed-shadow #pano:active { cursor: grabbing; }
 </div>
 <div id="crosshair"></div>
 
-<div id="compassContainer">
-  <div id="degreeCircle"><span id="yawTxt">0°</span><small id="pitchTxt">0°</small></div>
-  <div id="compassCircle">
-    <svg id="compassNeedle" viewBox="0 0 100 100" width="45" height="45" style="transition: transform 0.1s linear;">
-      <polygon points="50,90 65,50 35,50" fill="#999999" />
-      <polygon points="50,10 65,50 35,50" fill="#E60000" />
-      <text x="50" y="42" font-family="sans-serif" font-size="20" fill="white" font-weight="bold" text-anchor="middle">N</text>
-      <circle cx="50" cy="50" r="5" fill="#333333" />
+<button type="button" id="gyroButton" aria-label="ジャイロ" aria-pressed="false" title="ジャイロ">GYRO</button>
+
+<div id="compassContainer" aria-label="方位表示">
+  <div id="compassCircle" aria-label="コンパス">
+    <svg class="compass-dial" viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+      <text x="50" y="17" font-family="sans-serif" font-size="16" fill="#E60000" font-weight="bold" text-anchor="middle">N</text>
     </svg>
+    <svg id="compassNeedle" class="compass-needle" viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+      <polygon points="50,88 62,54 38,54" fill="#888888" />
+      <polygon points="50,12 62,54 38,54" fill="#E60000" />
+      <circle cx="50" cy="50" r="6" fill="#333333" stroke="#fff" stroke-width="2" />
+    </svg>
+  </div>
+  <div id="degreeCircle" aria-label="画面角度">
+    <span id="yawTxt">0°</span>
+    <small id="pitchTxt">0°</small>
   </div>
 </div>
 
@@ -578,7 +849,23 @@ body.embed-shadow #pano:active { cursor: grabbing; }
 <img id="arrowBlueLeft" class="arrow-nav" src="青左-removebg-preview.png">
 <img id="arrowBlueRight" class="arrow-nav" src="青右-removebg-preview.png">
 
+<div id="hiResPeekOverlay" aria-hidden="true">
+  <img id="hiResPeekVrBtn" src="VR-removebg-preview.png?v=2" alt="VRに戻る">
+  <div id="hiResPeekView">
+    <div id="hiResPeekMediaStage">
+      <img id="hiResPeekBaseImg" alt="">
+      <div id="hiResPeekShadowWrap" class="hi-res-peek-shadow-wrap" hidden>
+        <img id="hiResPeekShadowImg" class="hi-res-peek-shadow-img" alt="">
+      </div>
+      <div id="hiResPeekVideoWrap" class="hi-res-peek-video-wrap matte-lighten" hidden>
+        <video id="hiResPeekOverlayVideo" class="hi-res-peek-overlay-video" playsinline webkit-playsinline muted loop></video>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="vendor/marzipano.js"></script>
+<script src="vendor/gyro-control.js?v=13"></script>
 <script>
 // ポータル画像は data.js の imageHotspots（sourceScene / sceneStartId で出発地に紐付け）
 
@@ -925,14 +1212,580 @@ data.scenes.forEach(function(scene) {
 });
 
 // ビルド識別（どのファイルが実行されているか確認用）
-var BUILD_STAMP = '2026-06-10-footShadowPaint21';
+var BUILD_STAMP = '2026-06-16-compassHeading';
 var guideVideoPreloadBySrc = {};
 var guideVideoSessionDone = {};
 console.log('🧩 viewer build:', BUILD_STAMP);
 
+// ===== 高画質覗き（VR上の枠タップでEOS切り替え表示） =====
+var HI_RES_PEEK_FADE_MS = 1200;
+var hiResPeekOpen = false;
+var hiResPeekPanDrag = null;
+var hiResPeekPinch = null;
+var hiResPeekHintTimer = null;
+var hiResPeekVrBtnEl = null;
+var hiResPeekUiTimeout = null;
+var hiResPeekViewState = { baseScale: 1, zoom: 1, panX: 0, panY: 0 };
+var hiResPeekHotspotEl = null;
+var hiResPeekActiveCfg = null;
+
+function destroyHiResPeekHotspot() {
+  if (window.hiResPeekHotspotHandle && currentScene) {
+    try {
+      currentScene.hotspotContainer().destroyHotspot(window.hiResPeekHotspotHandle);
+    } catch (e) {}
+    window.hiResPeekHotspotHandle = null;
+  }
+  hiResPeekHotspotEl = null;
+  hiResPeekActiveCfg = null;
+}
+
+function hiResPeekShootMode(cfg) {
+  var m = cfg && (cfg.shootMode || cfg.peekType) ? String(cfg.shootMode || cfg.peekType) : 'range';
+  return m === 'macro' ? 'macro' : 'range';
+}
+
+function hiResPeekFrameViewThresholds(cfg) {
+  if (cfg.showAngleYaw != null || cfg.showAnglePitch != null) {
+    return {
+      yaw: cfg.showAngleYaw != null ? Number(cfg.showAngleYaw) : 14,
+      pitch: cfg.showAnglePitch != null ? Number(cfg.showAnglePitch) : 10
+    };
+  }
+  if (hiResPeekShootMode(cfg) === 'macro') {
+    return { yaw: 12, pitch: 10 };
+  }
+  var size = hiResPeekEffectiveFrameSize(cfg);
+  var r = cfg.frameRadius != null ? Number(cfg.frameRadius) : 900;
+  return {
+    yaw: Math.max(8, radToDeg(Math.atan((size.width * 0.5) / r)) + 4),
+    pitch: Math.max(6, radToDeg(Math.atan((size.height * 0.5) / r)) + 3)
+  };
+}
+
+function hiResPeekEffectiveFrameSize(cfg) {
+  var r = cfg.frameRadius != null ? Number(cfg.frameRadius) : 900;
+  var fw = cfg.frameWidth != null ? Number(cfg.frameWidth) : 520;
+  var fh = cfg.frameHeight != null ? Number(cfg.frameHeight) : 340;
+  if (cfg.rangeAngleYaw != null && isFinite(Number(cfg.rangeAngleYaw))) {
+    fw = Math.max(80, Math.round(2 * r * Math.tan(degToRad(Number(cfg.rangeAngleYaw)) / 2)));
+  }
+  if (cfg.rangeAnglePitch != null && isFinite(Number(cfg.rangeAnglePitch))) {
+    fh = Math.max(60, Math.round(2 * r * Math.tan(degToRad(Number(cfg.rangeAnglePitch)) / 2)));
+  }
+  return { width: fw, height: fh };
+}
+
+function hiResPeekMaskClass(cfg) {
+  var m = cfg && cfg.maskType ? String(cfg.maskType) : 'softRect';
+  if (m === 'softEllipse' || m === 'softCircle' || m === 'fadeLight' || m === 'fadeDark') return 'mask-' + m;
+  return 'mask-softRect';
+}
+
+function hiResPeekMagnifierSvg() {
+  return '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+    '<circle cx="27" cy="27" r="17" fill="none" stroke="currentColor" stroke-width="4.5"/>' +
+    '<line x1="40" y1="40" x2="56" y2="56" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>' +
+    '</svg>';
+}
+
+function hiResPeekMaskStrengthRatio(cfg) {
+  var s = cfg && cfg.maskStrength != null ? Number(cfg.maskStrength) : 65;
+  if (!isFinite(s)) s = 65;
+  return Math.max(15, Math.min(100, s)) / 100;
+}
+
+function applyHiResPeekMaskStyle(fill, cfg) {
+  if (!fill || !cfg) return;
+  var k = hiResPeekMaskStrengthRatio(cfg);
+  var mask = hiResPeekMaskClass(cfg);
+  if (mask === 'mask-fadeDark') {
+    fill.style.background = 'rgba(0, 0, 0, ' + (0.1 + k * 0.38).toFixed(3) + ')';
+    fill.style.boxShadow = 'none';
+  } else if (mask === 'mask-fadeLight') {
+    fill.style.background = 'rgba(255, 255, 255, ' + (0.08 + k * 0.42).toFixed(3) + ')';
+    fill.style.boxShadow = 'none';
+  } else {
+    fill.style.background = 'rgba(255, 255, 255, ' + (0.06 + k * 0.36).toFixed(3) + ')';
+    fill.style.boxShadow = 'inset 0 0 ' + Math.round(36 + k * 100) + 'px ' +
+      Math.round(10 + k * 34) + 'px rgba(255, 255, 255, ' + (0.03 + k * 0.22).toFixed(3) + ')';
+  }
+}
+
+function buildHiResPeekZoneElement(cfg) {
+  var isMacro = hiResPeekShootMode(cfg) === 'macro';
+  var host = document.createElement('div');
+  host.className = 'hires-peek-zone-host hires-peek-frame-hidden ' + (isMacro ? 'mode-macro' : 'mode-range');
+
+  if (!isMacro) {
+    var size = hiResPeekEffectiveFrameSize(cfg);
+    var fw = size.width;
+    var fh = size.height;
+    host.style.width = Math.max(120, fw) + 'px';
+    host.style.height = Math.max(80, fh) + 'px';
+    var zone = document.createElement('div');
+    zone.className = 'hires-peek-soft-zone tappable ' + hiResPeekMaskClass(cfg);
+    var fill = document.createElement('div');
+    fill.className = 'hires-peek-soft-fill';
+    applyHiResPeekMaskStyle(fill, cfg);
+    zone.appendChild(fill);
+    host.appendChild(zone);
+    bindPortalTap(zone, function() { openHiResPeekOverlay(); });
+  } else {
+    host.style.width = '56px';
+    host.style.height = '56px';
+  }
+
+  var magColor = cfg.magnifierColor || (isMacro ? 'pink' : 'green');
+  if (magColor !== 'pink' && magColor !== 'green' && magColor !== 'gold') {
+    magColor = isMacro ? 'pink' : 'green';
+  }
+  var mag = document.createElement('div');
+  mag.className = 'hires-peek-magnifier color-' + magColor;
+  mag.setAttribute('aria-label', '高画質虫眼鏡');
+  mag.innerHTML = hiResPeekMagnifierSvg();
+  host.appendChild(mag);
+  bindPortalTap(mag, function() { openHiResPeekOverlay(); });
+  return host;
+}
+
+function updateHiResPeekFrameVisibility() {
+  if (!hiResPeekHotspotEl || !hiResPeekActiveCfg || !currentView) return;
+  if (hiResPeekOpen) {
+    hiResPeekHotspotEl.classList.add('hires-peek-frame-hidden');
+    hiResPeekHotspotEl.classList.remove('hires-peek-blink');
+    return;
+  }
+  var yaw = radToDeg(normalizeAngle(currentView.parameters().yaw));
+  var pitch = radToDeg(currentView.parameters().pitch);
+  var yawC = Number(hiResPeekActiveCfg.yawCenter) || 0;
+  var pitchC = Number(hiResPeekActiveCfg.pitchCenter) || 0;
+  var th = hiResPeekFrameViewThresholds(hiResPeekActiveCfg);
+  var inView = Math.abs(angleDiffDeg(yaw, yawC)) <= th.yaw && Math.abs(pitch - pitchC) <= th.pitch;
+  var show = inView && uiArrowsShown;
+  hiResPeekHotspotEl.classList.toggle('hires-peek-frame-hidden', !show);
+  hiResPeekHotspotEl.classList.toggle('hires-peek-blink', show);
+}
+
+function attachHiResPeekHotspot(sceneId, sceneData) {
+  destroyHiResPeekHotspot();
+  if (embedPlacerMode || embedShadowMode) return;
+  var cfg = getHiResPeekConfig(sceneData);
+  if (!cfg || !currentScene) return;
+
+  var isMacro = hiResPeekShootMode(cfg) === 'macro';
+  var wrap = buildHiResPeekZoneElement(cfg);
+  var yaw = degToRad(Number(cfg.yawCenter) || 0);
+  var pitch = degToRad(Number(cfg.pitchCenter) || 0);
+  var radius = cfg.frameRadius != null ? Number(cfg.frameRadius) : (isMacro ? 720 : 900);
+
+  hiResPeekHotspotEl = wrap;
+  hiResPeekActiveCfg = cfg;
+
+  window.hiResPeekHotspotHandle = currentScene.hotspotContainer().createHotspot(
+    wrap,
+    { yaw: yaw, pitch: pitch },
+    { perspective: { radius: radius } }
+  );
+  updateHiResPeekFrameVisibility();
+  console.log('🔍 高画質覗き: ' + (isMacro ? '接写' : '範囲') + ' yaw=' + (cfg.yawCenter || 0) + '°');
+}
+
+function showHiResPeekHintFade() {
+  showHiResPeekVrUi();
+}
+
+function showHiResPeekVrUi() {
+  if (!hiResPeekOpen || !hiResPeekVrBtnEl) return;
+  hiResPeekVrBtnEl.classList.add('visible');
+  clearTimeout(hiResPeekUiTimeout);
+  hiResPeekUiTimeout = setTimeout(function() {
+    if (hiResPeekVrBtnEl) hiResPeekVrBtnEl.classList.remove('visible');
+  }, 3000);
+}
+
+function hideHiResPeekVrUi() {
+  clearTimeout(hiResPeekUiTimeout);
+  if (hiResPeekVrBtnEl) hiResPeekVrBtnEl.classList.remove('visible');
+}
+
+function getHiResPeekConfig(sceneData) {
+  if (!sceneData || !sceneData.hiResPeek) return null;
+  var p = sceneData.hiResPeek;
+  if (!p.imageSrc) return null;
+  return p;
+}
+
+function hiResPeekIosVideoSrc(cfg) {
+  if (!cfg) return '';
+  if (cfg.videoSrcIos) return String(cfg.videoSrcIos);
+  var s = String(cfg.videoSrc || '');
+  if (!s) return '';
+  if (/\.webm$/i.test(s)) return s.replace(/\.webm$/i, '.mp4');
+  return s;
+}
+
+function hiResPeekVideoConfig(cfg) {
+  if (!cfg || !cfg.videoSrc) return null;
+  return {
+    src: String(cfg.videoSrc),
+    srcIos: hiResPeekIosVideoSrc(cfg),
+    xPct: cfg.videoX != null && isFinite(cfg.videoX) ? Number(cfg.videoX) : 50,
+    yPct: cfg.videoY != null && isFinite(cfg.videoY) ? Number(cfg.videoY) : 50,
+    widthPct: cfg.videoWidth != null && isFinite(cfg.videoWidth) ? Number(cfg.videoWidth) : 18,
+    matte: cfg.videoMatte === 'none' ? 'none' : 'lighten',
+    loop: cfg.videoLoop !== false
+  };
+}
+
+function hiResPeekFootShadowConfig(cfg) {
+  if (!cfg || cfg.footShadow !== true || !cfg.footShadowImage) return null;
+  var fc = cfg.footShadowConfig && typeof cfg.footShadowConfig === 'object' ? cfg.footShadowConfig : {};
+  return {
+    image: String(cfg.footShadowImage),
+    opacity: fc.opacity != null && isFinite(fc.opacity) ? Number(fc.opacity) : 0.35,
+    blurPx: fc.blurPx != null && isFinite(fc.blurPx) ? Number(fc.blurPx) : 4
+  };
+}
+
+function syncHiResPeekShadowLayer(cfg) {
+  var wrap = document.getElementById('hiResPeekShadowWrap');
+  var img = document.getElementById('hiResPeekShadowImg');
+  var baseImg = document.getElementById('hiResPeekBaseImg');
+  if (!wrap || !img || !baseImg) return;
+  var sc = hiResPeekFootShadowConfig(cfg);
+  if (!sc) {
+    wrap.hidden = true;
+    img.removeAttribute('src');
+    img.style.opacity = '';
+    img.style.filter = 'none';
+    return;
+  }
+  var iw = baseImg.naturalWidth || parseInt(baseImg.style.width, 10) || 0;
+  var ih = baseImg.naturalHeight || parseInt(baseImg.style.height, 10) || 0;
+  if (!iw || !ih) return;
+  wrap.hidden = false;
+  wrap.style.left = '0';
+  wrap.style.top = '0';
+  wrap.style.width = iw + 'px';
+  wrap.style.height = ih + 'px';
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.opacity = String(Math.max(0.01, Math.min(1, sc.opacity)));
+  img.style.filter = sc.blurPx > 0 ? ('blur(' + sc.blurPx + 'px)') : 'none';
+  img.src = hiResPeekMediaUrl(sc.image);
+}
+
+function hiResPeekMediaUrl(src) {
+  var s = String(src || '');
+  if (!s) return s;
+  if (s.indexOf('?') < 0) s += '?v=' + encodeURIComponent(BUILD_STAMP);
+  else s += '&v=' + encodeURIComponent(BUILD_STAMP);
+  return s;
+}
+
+function hiResPeekImageUrl(src) {
+  return hiResPeekMediaUrl(src);
+}
+
+function appendHiResPeekVideoSources(vid, vc) {
+  if (!vid || !vc) return;
+  while (vid.firstChild) vid.removeChild(vid.firstChild);
+  vid.removeAttribute('src');
+  vid.loop = vc.loop !== false;
+  vid.muted = true;
+  if (typeof guideDeviceIsIosSafari === 'function' && guideDeviceIsIosSafari() && vc.srcIos) {
+    vid.src = hiResPeekMediaUrl(vc.srcIos);
+    return;
+  }
+  var s = document.createElement('source');
+  s.src = hiResPeekMediaUrl(vc.src);
+  if (/\.webm$/i.test(vc.src)) s.type = 'video/webm';
+  else s.type = 'video/mp4';
+  vid.appendChild(s);
+}
+
+function syncHiResPeekVideoLayout(cfg) {
+  var wrap = document.getElementById('hiResPeekVideoWrap');
+  var vid = document.getElementById('hiResPeekOverlayVideo');
+  var stage = document.getElementById('hiResPeekMediaStage');
+  var img = document.getElementById('hiResPeekBaseImg');
+  if (!wrap || !vid || !stage || !img) return;
+  var vc = hiResPeekVideoConfig(cfg);
+  if (!vc) {
+    wrap.hidden = true;
+    try { vid.pause(); } catch (e0) {}
+    syncHiResPeekShadowLayer(cfg);
+    return;
+  }
+  wrap.hidden = false;
+  var matte = vc.matte === 'none' ? 'normal' : vc.matte;
+  if (matte === 'normal' && typeof guideDeviceIsIosSafari === 'function' && guideDeviceIsIosSafari() && vc.srcIos && vc.srcIos !== vc.src) {
+    matte = 'lighten';
+  }
+  wrap.className = 'hi-res-peek-video-wrap matte-' + matte;
+  var iw = img.naturalWidth || parseInt(img.style.width, 10) || stage.clientWidth;
+  var ih = img.naturalHeight || parseInt(img.style.height, 10) || stage.clientHeight;
+  if (!iw || !ih) {
+    syncHiResPeekShadowLayer(cfg);
+    return;
+  }
+  var w = Math.max(8, iw * vc.widthPct / 100);
+  var ar = vid.videoWidth > 0 && vid.videoHeight > 0 ? vid.videoHeight / vid.videoWidth : 1.35;
+  var h = w * ar;
+  var x = iw * vc.xPct / 100 - w / 2;
+  var y = ih * vc.yPct / 100 - h / 2;
+  wrap.style.left = x + 'px';
+  wrap.style.top = y + 'px';
+  wrap.style.width = w + 'px';
+  wrap.style.height = h + 'px';
+  syncHiResPeekShadowLayer(cfg);
+}
+
+function setupHiResPeekOverlayVideo(cfg) {
+  var vid = document.getElementById('hiResPeekOverlayVideo');
+  if (!vid) return;
+  var vc = hiResPeekVideoConfig(cfg);
+  if (!vc) {
+    syncHiResPeekVideoLayout(cfg);
+    return;
+  }
+  appendHiResPeekVideoSources(vid, vc);
+  function onMeta() {
+    syncHiResPeekVideoLayout(cfg);
+    var p = vid.play();
+    if (p && p.catch) p.catch(function() {});
+  }
+  vid.onloadedmetadata = onMeta;
+  vid.onerror = function() {
+    console.warn('⚠️ 高画質覗き動画を読み込めません:', vc.src);
+  };
+  try { vid.load(); } catch (e1) {}
+  if (vid.readyState >= 1) onMeta();
+}
+
+function teardownHiResPeekOverlayVideo() {
+  var vid = document.getElementById('hiResPeekOverlayVideo');
+  var wrap = document.getElementById('hiResPeekVideoWrap');
+  var shadowWrap = document.getElementById('hiResPeekShadowWrap');
+  var shadowImg = document.getElementById('hiResPeekShadowImg');
+  if (!vid) return;
+  try { vid.pause(); } catch (e0) {}
+  vid.removeAttribute('src');
+  while (vid.firstChild) vid.removeChild(vid.firstChild);
+  vid.onloadedmetadata = null;
+  if (wrap) wrap.hidden = true;
+  if (shadowWrap) shadowWrap.hidden = true;
+  if (shadowImg) shadowImg.removeAttribute('src');
+}
+
+function applyHiResPeekTransform() {
+  var stage = document.getElementById('hiResPeekMediaStage');
+  if (!stage) return;
+  var s = hiResPeekViewState.baseScale * hiResPeekViewState.zoom;
+  stage.style.transform = 'translate(calc(-50% + ' + hiResPeekViewState.panX + 'px), calc(-50% + ' + hiResPeekViewState.panY + 'px)) scale(' + s + ')';
+}
+
+function fitHiResPeekImage() {
+  var view = document.getElementById('hiResPeekView');
+  var stage = document.getElementById('hiResPeekMediaStage');
+  var img = document.getElementById('hiResPeekBaseImg');
+  if (!view || !stage || !img || !img.naturalWidth) return;
+  var vw = view.clientWidth;
+  var vh = view.clientHeight;
+  var iw = img.naturalWidth;
+  var ih = img.naturalHeight;
+  hiResPeekViewState.baseScale = Math.max(vw / iw, vh / ih);
+  hiResPeekViewState.zoom = 1;
+  hiResPeekViewState.panX = 0;
+  hiResPeekViewState.panY = 0;
+  stage.style.width = iw + 'px';
+  stage.style.height = ih + 'px';
+  img.style.width = iw + 'px';
+  img.style.height = ih + 'px';
+  var cfg = currentSceneObj ? getHiResPeekConfig(currentSceneObj.data) : null;
+  syncHiResPeekVideoLayout(cfg);
+  applyHiResPeekTransform();
+}
+
+function setHiResPeekZoom(nextZoom, anchorX, anchorY) {
+  var view = document.getElementById('hiResPeekView');
+  var img = document.getElementById('hiResPeekBaseImg');
+  if (!view || !img || !img.naturalWidth) return;
+  var z0 = hiResPeekViewState.zoom;
+  var z1 = Math.max(1, Math.min(5, nextZoom));
+  if (z1 === z0) return;
+  var vw = view.clientWidth;
+  var vh = view.clientHeight;
+  var cx = anchorX != null ? anchorX : vw / 2;
+  var cy = anchorY != null ? anchorY : vh / 2;
+  var s0 = hiResPeekViewState.baseScale * z0;
+  var s1 = hiResPeekViewState.baseScale * z1;
+  var ix = (cx - vw / 2 - hiResPeekViewState.panX) / s0;
+  var iy = (cy - vh / 2 - hiResPeekViewState.panY) / s0;
+  hiResPeekViewState.zoom = z1;
+  hiResPeekViewState.panX = cx - vw / 2 - ix * s1;
+  hiResPeekViewState.panY = cy - vh / 2 - iy * s1;
+  applyHiResPeekTransform();
+}
+
+function openHiResPeekOverlay() {
+  var cfg = currentSceneObj ? getHiResPeekConfig(currentSceneObj.data) : null;
+  if (!cfg || hiResPeekOpen) return;
+  var overlay = document.getElementById('hiResPeekOverlay');
+  var baseImg = document.getElementById('hiResPeekBaseImg');
+  if (!overlay || !baseImg) return;
+  hiResPeekOpen = true;
+  updateHiResPeekFrameVisibility();
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.style.display = 'block';
+  baseImg.style.opacity = '0';
+  var url = hiResPeekImageUrl(cfg.imageSrc);
+  function showHiResPeekImageReady() {
+    fitHiResPeekImage();
+    setupHiResPeekOverlayVideo(cfg);
+    syncHiResPeekShadowLayer(cfg);
+    requestAnimationFrame(function() { baseImg.style.opacity = '1'; });
+  }
+  baseImg.onerror = function() {
+    console.warn('⚠️ 高画質画像を読み込めません:', cfg.imageSrc);
+    closeHiResPeekOverlay();
+  };
+  baseImg.onload = showHiResPeekImageReady;
+  baseImg.src = url;
+  if (baseImg.complete && baseImg.naturalWidth) showHiResPeekImageReady();
+  requestAnimationFrame(function() {
+    overlay.classList.add('open');
+  });
+  showHiResPeekHintFade();
+}
+
+function closeHiResPeekOverlay() {
+  var overlay = document.getElementById('hiResPeekOverlay');
+  var baseImg = document.getElementById('hiResPeekBaseImg');
+  if (!overlay) return;
+  hiResPeekOpen = false;
+  hiResPeekPanDrag = null;
+  hiResPeekPinch = null;
+  hideHiResPeekVrUi();
+  teardownHiResPeekOverlayVideo();
+  overlay.classList.remove('open');
+  if (baseImg) baseImg.style.opacity = '0';
+  setTimeout(function() {
+    if (!hiResPeekOpen) {
+      overlay.setAttribute('aria-hidden', 'true');
+      overlay.style.display = 'none';
+    }
+  }, HI_RES_PEEK_FADE_MS);
+  updateHiResPeekFrameVisibility();
+}
+
+function bindHiResPeekUi() {
+  var overlay = document.getElementById('hiResPeekOverlay');
+  var view = document.getElementById('hiResPeekView');
+  hiResPeekVrBtnEl = document.getElementById('hiResPeekVrBtn');
+  if (!overlay || !view || !hiResPeekVrBtnEl) return;
+
+  hiResPeekVrBtnEl.addEventListener('click', function(e) {
+    e.stopPropagation();
+    closeHiResPeekOverlay();
+  });
+  overlay.addEventListener('mousemove', showHiResPeekVrUi);
+  overlay.addEventListener('touchstart', showHiResPeekVrUi, { passive: true });
+  window.addEventListener('keydown', function(e) {
+    if (!hiResPeekOpen) return;
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      e.preventDefault();
+      closeHiResPeekOverlay();
+    }
+  });
+
+  function touchDistance(touches) {
+    var dx = touches[0].clientX - touches[1].clientX;
+    var dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  view.addEventListener('mousedown', function(e) {
+    if (!hiResPeekOpen || e.button !== 0) return;
+    showHiResPeekVrUi();
+    hiResPeekPanDrag = { x0: e.clientX, y0: e.clientY, panX: hiResPeekViewState.panX, panY: hiResPeekViewState.panY };
+    view.classList.add('is-dragging');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (!hiResPeekPanDrag) return;
+    hiResPeekViewState.panX = hiResPeekPanDrag.panX + (e.clientX - hiResPeekPanDrag.x0);
+    hiResPeekViewState.panY = hiResPeekPanDrag.panY + (e.clientY - hiResPeekPanDrag.y0);
+    applyHiResPeekTransform();
+  });
+  window.addEventListener('mouseup', function() {
+    if (!hiResPeekPanDrag) return;
+    hiResPeekPanDrag = null;
+    view.classList.remove('is-dragging');
+  });
+
+  view.addEventListener('wheel', function(e) {
+    if (!hiResPeekOpen) return;
+    e.preventDefault();
+    showHiResPeekVrUi();
+    var rect = view.getBoundingClientRect();
+    var delta = e.deltaY < 0 ? 0.12 : -0.12;
+    setHiResPeekZoom(hiResPeekViewState.zoom + delta, e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+
+  view.addEventListener('touchstart', function(e) {
+    if (!hiResPeekOpen) return;
+    showHiResPeekVrUi();
+    if (e.touches.length === 2) {
+      hiResPeekPinch = {
+        dist: touchDistance(e.touches),
+        zoom: hiResPeekViewState.zoom,
+        midX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        midY: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        rect: view.getBoundingClientRect()
+      };
+      hiResPeekPanDrag = null;
+    } else if (e.touches.length === 1) {
+      var t = e.touches[0];
+      hiResPeekPanDrag = { x0: t.clientX, y0: t.clientY, panX: hiResPeekViewState.panX, panY: hiResPeekViewState.panY };
+      hiResPeekPinch = null;
+    }
+  }, { passive: true });
+
+  view.addEventListener('touchmove', function(e) {
+    if (!hiResPeekOpen) return;
+    if (hiResPeekPinch && e.touches.length >= 2) {
+      e.preventDefault();
+      var dist = touchDistance(e.touches);
+      var rect = hiResPeekPinch.rect;
+      var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      setHiResPeekZoom(hiResPeekPinch.zoom * (dist / hiResPeekPinch.dist), midX, midY);
+    } else if (hiResPeekPanDrag && e.touches.length === 1) {
+      e.preventDefault();
+      var t0 = e.touches[0];
+      hiResPeekViewState.panX = hiResPeekPanDrag.panX + (t0.clientX - hiResPeekPanDrag.x0);
+      hiResPeekViewState.panY = hiResPeekPanDrag.panY + (t0.clientY - hiResPeekPanDrag.y0);
+      applyHiResPeekTransform();
+    }
+  }, { passive: false });
+
+  view.addEventListener('touchend', function() {
+    hiResPeekPanDrag = null;
+    hiResPeekPinch = null;
+    view.classList.remove('is-dragging');
+  });
+
+  window.addEventListener('resize', function() {
+    if (hiResPeekOpen) fitHiResPeekImage();
+  });
+}
+
 var panoElement = document.querySelector('#pano');
 var viewer = new Marzipano.Viewer(panoElement);
 bindIOSGuideVideoKick();
+bindHiResPeekUi();
 
 // ★画面タッチで自動再生停止（黄色矢印と同じ方式）
 panoElement.addEventListener('mousedown', function() {
@@ -956,6 +1809,7 @@ panoElement.addEventListener('touchstart', function(e) {
 // UI要素の取得（ここで一括定義するように修正）
 var counterEl = document.getElementById('counter');
 var mapBtnEl = document.getElementById('mapButton');
+var gyroBtnEl = document.getElementById('gyroButton');
 var crosshairEl = document.getElementById('crosshair');
 var compassContEl = document.getElementById('compassContainer');
 var compassNeedleCircle = document.getElementById('compassCircle');
@@ -1002,6 +1856,42 @@ var zoomUI=document.getElementById('zoomContainer');
 var fadeUI=document.getElementById('fadeContainer');
 var showAutoCtrl=false;
 var uiArrowsShown=false;
+var sceneGyro = null;
+
+if (typeof GyroControl !== 'undefined' && GyroControl.isSupportedDevice() && gyroBtnEl) {
+  sceneGyro = new GyroControl(function() { return currentView; });
+  sceneGyro.setHooks({
+    onStart: function() {
+      try { viewer.controls().disable(); } catch (e0) {}
+      if (panoElement) {
+        panoElement.style.touchAction = 'none';
+        document.body.classList.add('gyro-active');
+      }
+    },
+    onStop: function() {
+      try { viewer.controls().enable(); } catch (e1) {}
+      if (panoElement) {
+        panoElement.style.touchAction = '';
+        document.body.classList.remove('gyro-active');
+      }
+    },
+    onTick: function() {
+      try { viewer.controls().disable(); } catch (e2) {}
+    }
+  });
+  sceneGyro.setOnChange(function(on) {
+    gyroBtnEl.classList.toggle('is-on', on);
+    gyroBtnEl.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  gyroBtnEl.addEventListener('click', function(e) {
+    e.stopPropagation();
+    sceneGyro.toggle();
+    showUI();
+  });
+  window.sceneGyro = sceneGyro;
+} else if (gyroBtnEl) {
+  gyroBtnEl.style.display = 'none';
+}
 
 data.scenes.forEach(function(sd) {
   var tilesBase = window.TILES_BASE || 'tiles';
@@ -1034,6 +1924,7 @@ function syncYellowArrowVisibility() {
 
 function showUI() {
   var standardUI = [mapBtnEl, counterEl];
+  if (gyroBtnEl && gyroBtnEl.style.display !== 'none') standardUI.push(gyroBtnEl);
   var yellowArrowIds = ['arrowUp', 'arrowDown', 'arrowLeft', 'arrowRight'];
 
   uiArrowsShown = true;
@@ -1044,12 +1935,7 @@ function showUI() {
     if(crosshairEl) crosshairEl.classList.add('visible');
     if(compassContEl) compassContEl.classList.add('visible');
     
-    var hasCompassData = (currentSceneObj && (currentSceneObj.data.heading !== undefined || currentSceneObj.data.compassHeading !== undefined));
-    if(hasCompassData) {
-      compassNeedleCircle.classList.add('active');
-    } else {
-      compassNeedleCircle.classList.remove('active');
-    }
+    updateCompassDisplay();
   } else {
     if(crosshairEl) crosshairEl.classList.remove('visible');
     if(compassContEl) compassContEl.classList.remove('visible');
@@ -1067,7 +1953,9 @@ function showUI() {
       var el = document.getElementById(id);
       if (el) el.classList.remove('visible');
     });
+    updateHiResPeekFrameVisibility();
   }, 3000);
+  updateHiResPeekFrameVisibility();
 }
 
 // イベントリスナーの修正
@@ -1401,6 +2289,17 @@ function onPortalHotspotTap(hs) {
   }
   if (ih.videoSrc && ih.playVideoOnTap !== false && !isSupportedFullscreenMediaSrc(ih.videoSrc)) {
     console.warn('⚠️ videoSrc は対応形式ではないため、再生をスキップします:', ih.videoSrc);
+  }
+  if (ih.openInLook && ih.targetScene) {
+    setPortalTappable(hs, false);
+    var lookBack = location.pathname + location.search;
+    var lookUrl = 'look.html?id=' + encodeURIComponent(ih.targetScene);
+    if (ih.targetYaw != null && ih.targetYaw !== '') lookUrl += '&yaw=' + encodeURIComponent(ih.targetYaw);
+    if (ih.targetPitch != null && ih.targetPitch !== '') lookUrl += '&pitch=' + encodeURIComponent(ih.targetPitch);
+    lookUrl += '&back=' + encodeURIComponent(lookBack);
+    if (ih.autoGyro) lookUrl += '&gyro=1';
+    location.href = lookUrl;
+    return;
   }
   if (!ih.targetScene) return;
   setPortalTappable(hs, false);
@@ -2515,6 +3414,27 @@ function seekGuideVideoToLastFrame(vid) {
   else vid.addEventListener('loadedmetadata', seek, { once: true });
 }
 
+function guideRestUsesFirstFrame(vh) {
+  if (!vh) return false;
+  if (vh.guideRestFrame === 'last') return false;
+  if (vh.guideRestFrame === 'first' || vh.guideRestFrame === 0) return true;
+  /* playOnView は最終コマにスピルが出やすい → 省略時は先頭で静止（GitHub の見え方に合わせる） */
+  return guideUsePlayOnView(vh);
+}
+
+/** 再生終了後の静止画。first＝最初のフレーム（緑縁の少ない方）、省略時＝最後のフレーム */
+function seekGuideVideoToRestFrame(vid, vh) {
+  if (guideRestUsesFirstFrame(vh)) {
+    function seek() {
+      try { vid.currentTime = 0; vid.pause(); } catch (e) {}
+    }
+    if (vid.readyState >= 1) seek();
+    else vid.addEventListener('loadedmetadata', seek, { once: true });
+    return;
+  }
+  seekGuideVideoToLastFrame(vid);
+}
+
 function normYawDeg(y) {
   var n = ((parseFloat(y) % 360) + 360) % 360;
   if (n > 180) n -= 360;
@@ -2555,9 +3475,19 @@ function cleanupGuideViewPlayListener(entry) {
 
 function setupGuidePlacerPreviewPlayback(vid, vh, entry) {
   entry.guidePlaybackDone = false;
-  vid.loop = true;
   vid.muted = true;
   vid.autoplay = false;
+  if (guideRestUsesFirstFrame(vh)) {
+    vid.loop = false;
+    function holdFirst() {
+      try { vid.pause(); vid.currentTime = 0; } catch (e0) {}
+      paintGuideCanvasOnce(entry);
+    }
+    vid.addEventListener('loadeddata', holdFirst, { once: true });
+    if (vid.readyState >= 2) holdFirst();
+    return;
+  }
+  vid.loop = true;
   function loopPlay() {
     try { vid.currentTime = 0; } catch (e0) {}
     var p = vid.play();
@@ -2631,9 +3561,9 @@ function setupGuideVideoPlayback(vid, vh, sceneId, entry, view) {
   entry.guidePlaybackDone = !loop && guideVideoSessionDone[sceneId] === true;
 
   if (entry.guidePlaybackDone) {
-    seekGuideVideoToLastFrame(vid);
+    seekGuideVideoToRestFrame(vid, vh);
     vid.addEventListener('loadeddata', function() {
-      seekGuideVideoToLastFrame(vid);
+      seekGuideVideoToRestFrame(vid, vh);
       paintGuideCanvasOnce(entry);
     }, { once: true });
     return;
@@ -3752,7 +4682,7 @@ function finishGuidePlayback(vid, sceneId, entry) {
     entry.guideImgRaf = 0;
   }
   try { vid.pause(); } catch (e) {}
-  seekGuideVideoToLastFrame(vid);
+  seekGuideVideoToRestFrame(vid, entry.vh);
   stopGuideIosScreenCanvasPaint(entry);
   if (entry.guideCanvasCtx) {
     paintGuideCanvasOnce(entry, entry.blackKeyThr != null ? entry.blackKeyThr : 22);
@@ -3945,7 +4875,7 @@ function kickSceneGuideVideos() {
   (window.sceneVideoEls || []).forEach(function(entry) {
     if (!entry.vid) return;
     if (entry.guidePlaybackDone) {
-      seekGuideVideoToLastFrame(entry.vid);
+      seekGuideVideoToRestFrame(entry.vid, entry.vh);
       if (entry.guideCanvasCtx || entry.guideDisplayImg) paintGuideCanvasOnce(entry, entry.blackKeyThr);
       return;
     }
@@ -4088,13 +5018,33 @@ function updateVideoHotspotLive(vh) {
   return true;
 }
 
+function mergeGuideHotspotPreview(preview, sceneId) {
+  if (!preview) return preview;
+  var saved = savedVideoHotspotsForScene(sceneId);
+  var base = saved && saved[0] ? saved[0] : null;
+  if (!base) return preview;
+  var merged = Object.assign({}, base, preview);
+  if (preview.canvasBlackKey !== true) {
+    delete merged.canvasBlackKey;
+    delete merged.blackKeyThreshold;
+    delete merged.blackKeySoft;
+  }
+  if (preview.guideRestFrame == null && base.guideRestFrame != null) {
+    merged.guideRestFrame = base.guideRestFrame;
+  }
+  return merged;
+}
+
 function getVideoHotspotsForScene(sceneId, sceneData) {
   if (embedShadowMode && shadowPreviewHotspot && shadowPreviewSceneId === sceneId) {
     return [shadowPreviewHotspot];
   }
   // 貼り付けプレビューは編集中シーンだけ。他の cc シーンでは出さない
   if (embedPlacerMode && placerPreviewHotspot && placerPreviewSceneId === sceneId) {
-    return [placerPreviewHotspot];
+    return [mergeGuideHotspotPreview(placerPreviewHotspot, sceneId)];
+  }
+  if (embedPlacerMode) {
+    return [];
   }
   if (window.APP_DATA && window.APP_DATA.scenes) {
     for (var i = 0; i < window.APP_DATA.scenes.length; i++) {
@@ -4203,6 +5153,7 @@ function applyPlacerPreviewHotspot(hotspot, sceneId, fromParent) {
     destroySceneVideoHotspots();
     return;
   }
+  hotspot = mergeGuideHotspotPreview(hotspot, newSceneId);
   if (fromParent) {
     schedulePlacerLiveAttach(hotspot, newSceneId);
     return;
@@ -4459,10 +5410,9 @@ function scheduleAttachVideoHotspots(sceneId, sceneData, delayMs) {
     if (!currentSceneObj || currentSceneObj.data.id !== sceneId) return;
     if (embedPlacerMode) {
       notifyPlacerParentReady();
-      if (placerPreviewHotspot) {
+      destroySceneVideoHotspots();
+      if (placerPreviewHotspot && placerPreviewSceneId === sceneId) {
         tryApplyPlacerPreviewHotspot();
-      } else if (sceneData.videoHotspots && sceneData.videoHotspots[0]) {
-        applyPlacerPreviewHotspot(sceneData.videoHotspots[0], sceneId);
       }
       return;
     }
@@ -4498,6 +5448,7 @@ function collectImageHotspotsForScene(sceneId) {
 }
 
 function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreenOverlay) {
+  if (window.sceneGyro) window.sceneGyro.stop();
   var obj = scenesData[sceneId];
   if (!obj) return;
 
@@ -4517,6 +5468,8 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
   window.sceneVideoHotspotHandles = [];
   window.sceneVideoEls = [];
   pauseAllSceneVideos(!!keepFullscreenOverlay);
+  closeHiResPeekOverlay();
+  destroyHiResPeekHotspot();
 
   if (window.hotspotImages) {
     window.hotspotImages = [];
@@ -4726,6 +5679,48 @@ function switchScene(sceneId, yaw, pitch, fov, fromPortalHotspot, keepFullscreen
     });
   }
 
+  attachHiResPeekHotspot(sceneId, obj.data);
+
+  updateCompassDisplay();
+}
+
+function hasSceneCompassData(sceneData) {
+  if (!sceneData) return false;
+  if (sceneData.compassHeading !== undefined && sceneData.compassHeading !== null &&
+      !isNaN(Number(sceneData.compassHeading))) {
+    return true;
+  }
+  if (sceneData.heading !== undefined && sceneData.heading !== null &&
+      !isNaN(Number(sceneData.heading))) {
+    return true;
+  }
+  return false;
+}
+
+function getSceneNorthOffset(sceneData) {
+  if (!hasSceneCompassData(sceneData)) return null;
+  if (sceneData.compassHeading !== undefined && sceneData.compassHeading !== null &&
+      !isNaN(Number(sceneData.compassHeading))) {
+    return Number(sceneData.compassHeading);
+  }
+  return Number(sceneData.heading);
+}
+
+function updateCompassDisplay() {
+  var sceneData = currentSceneObj && currentSceneObj.data;
+  var hasCompass = hasSceneCompassData(sceneData);
+  var northOff = getSceneNorthOffset(sceneData);
+  if (compassNeedleCircle) {
+    compassNeedleCircle.classList.toggle('active', hasCompass);
+  }
+  if (!hasCompass || northOff == null || !currentView) {
+    return;
+  }
+  var yawDeg = radToDeg(normalizeAngle(currentView.parameters().yaw));
+  var needleEl = document.getElementById('compassNeedle');
+  if (needleEl) {
+    needleEl.style.transform = 'rotate(' + (-(northOff + yawDeg)) + 'deg)';
+  }
 }
 
 function updateUI() {
@@ -4734,9 +5729,12 @@ function updateUI() {
   var yawDeg = radToDeg(normalizeAngle(currentView.parameters().yaw));
   var pitch = radToDeg(currentView.parameters().pitch);
 
-  document.getElementById('yawTxt').textContent = Math.round(yawDeg) + '°';
-  document.getElementById('pitchTxt').textContent = Math.round(pitch) + '°';
-  document.getElementById('compassNeedle').style.transform = 'rotate(' + (-yawDeg) + 'deg)';
+  var yawEl = document.getElementById('yawTxt');
+  var pitchEl = document.getElementById('pitchTxt');
+  if (yawEl) yawEl.textContent = Math.round(yawDeg) + '°';
+  if (pitchEl) pitchEl.textContent = Math.round(pitch) + '°';
+
+  updateCompassDisplay();
 
   // ★ホットスポットエディタ連携：現在の向きをlocalStorageに書き込む
   try {
@@ -4744,6 +5742,8 @@ function updateUI() {
     localStorage.setItem('hs_yaw',   currentView.parameters().yaw);
     localStorage.setItem('hs_pitch', currentView.parameters().pitch);
   } catch(e) {}
+
+  updateHiResPeekFrameVisibility();
 
   var yawAbs = Math.abs(yawDeg);
   var isVert = yawAbs <= 45 || yawAbs > 135;
@@ -6202,7 +7202,12 @@ window.goToMap = function() {
   activeBgmCourse = null;
   guideVideoSessionDone = {};
   stopAllBGM();
-  location.href = urlParams.get('back') || 'map.html';
+  var back = urlParams.get('back') || 'map.html';
+  try {
+    location.href = new URL(back, window.location.href).href;
+  } catch (e0) {
+    location.href = 'map.html';
+  }
 };
 
 // ========================================

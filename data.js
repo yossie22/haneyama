@@ -1,4 +1,3 @@
-// GENERATOR_HISTORY: [{"sceneId":"2-aa003","text":"どこかのシーンに二人のモデルが立っています。　　　　　　　　　　　　　　　　　　　　　　　　ゆっくり回転で見つかります！","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffffff","pitch":1.44,"yaw":0.88},{"sceneId":"2-aa003","text":"どこかのシーンに二人のモデルが","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffffff","pitch":1.44,"yaw":0.88},{"sceneId":"1-aa002","text":"上矢印の長押しで動画になり その後頂上の標識へ進みます。","fontSize":20,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.56},{"sceneId":"0-aa001","text":"真っ先に花畑に向かったのですが                                                                      霧が深くて引き返し先に登山です。","fontSize":21,"fontFamily":"'Hiragino Kaku Gothic Pro','ヒラギノ角ゴ Pro W3',sans-serif","color":"#ffff00","pitch":1.49,"yaw":0.96}]
 var APP_DATA = {
   "courseBgm": {
     "aa": {
@@ -681,7 +680,23 @@ var APP_DATA = {
       "infoHotspots": [],
       "position": 17,
       "course": "aa",
-      "yellowAutoMove": true
+      "yellowAutoMove": true,
+      "hiResPeek": {
+        "imageSrc": "aa017_eos.jpg",
+        "yawCenter": -41,
+        "pitchCenter": 5,
+        "frameWidth": 350,
+        "frameHeight": 221,
+        "frameRadius": 900,
+        "rangeAngleYaw": 22,
+        "rangeAnglePitch": 14,
+        "showAngleYaw": 10,
+        "showAnglePitch": 9,
+        "shootMode": "range",
+        "maskType": "softRect",
+        "maskStrength": 50,
+        "magnifierColor": "green"
+      }
     },
     {
       "id": "17-aa018",
@@ -1132,21 +1147,11 @@ var APP_DATA = {
           "autoplay": false,
           "playOnView": true,
           "playYawRange": 18,
+          "guideRestFrame": "first",
           "srcIos": "video/guide_alpha_ios.mp4",
           "srcHevc": "video/ipad.mp4",
-          "footShadow": true,
-          "footShadowConfig": {
-            "extended": true,
-            "widthPx": 1220,
-            "offsetYawDeg": 0,
-            "offsetPitchDeg": -14,
-            "opacity": 0.19,
-            "blurPx": 13,
-            "rotateDeg": 0,
-            "scaleX": 1,
-            "scaleY": 2.8
-          },
-          "footShadowImage": "shadows/25-cc003_foot.png"
+          "footShadow": false,
+          "footShadowConfig": {}
         }
       ]
     }
